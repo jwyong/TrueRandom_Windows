@@ -1,0 +1,85 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "782b323a593826b22d91cdeda8655167",
+    "entities": [
+      {
+        "tableName": "liked_tracks",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`trackUri` TEXT NOT NULL, `isPlayable` INTEGER, `isLocal` INTEGER, `trackName` TEXT, `artistName` TEXT, `albumCoverUrl` TEXT, `addedAt` TEXT, PRIMARY KEY(`trackUri`))",
+        "fields": [
+          {
+            "fieldPath": "trackUri",
+            "columnName": "trackUri",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isPlayable",
+            "columnName": "isPlayable",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "isLocal",
+            "columnName": "isLocal",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "trackName",
+            "columnName": "trackName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "artistName",
+            "columnName": "artistName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "albumCoverUrl",
+            "columnName": "albumCoverUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "addedAt",
+            "columnName": "addedAt",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "trackUri"
+          ]
+        }
+      },
+      {
+        "tableName": "play_count",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`trackUri` TEXT NOT NULL, `playCount` INTEGER NOT NULL, PRIMARY KEY(`trackUri`))",
+        "fields": [
+          {
+            "fieldPath": "trackUri",
+            "columnName": "trackUri",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "playCount",
+            "columnName": "playCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "trackUri"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '782b323a593826b22d91cdeda8655167')"
+    ]
+  }
+}

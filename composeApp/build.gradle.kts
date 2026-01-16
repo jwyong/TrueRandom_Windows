@@ -4,7 +4,13 @@ plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
-    alias(libs.plugins.composeHotReload)
+    alias(libs.plugins.ksp)
+    kotlin("plugin.serialization")
+    alias(libs.plugins.androidx.room)
+}
+
+room {
+    schemaDirectory("$projectDir/schemas")
 }
 
 kotlin {
@@ -18,22 +24,25 @@ kotlin {
             implementation(compose.ui)
             implementation(compose.components.resources)
             implementation(compose.preview)
-            implementation(libs.androidx.lifecycle.viewmodelCompose)
-            implementation(libs.androidx.lifecycle.runtimeCompose)
 
             // REPLACING ROOM (KMP version)
-            implementation("androidx.room:room-runtime:2.7.0-alpha01")
+            implementation(libs.androidx.room.runtime)
+            implementation("androidx.sqlite:sqlite-bundled:2.5.0-alpha11")
 
-            // REPLACING SHARED PREFS
-            implementation("com.russhwolf:multiplatform-settings:1.1.1")
+            // Datastore
+            implementation("androidx.datastore:datastore-preferences:1.1.1")
+            implementation("androidx.datastore:datastore:1.1.1")
 
             // FOR SPOTIFY API (Replacing Android SDK)
             implementation("io.ktor:ktor-client-core:2.3.12")
             implementation("io.ktor:ktor-client-cio:2.3.12")
-            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.1")
+            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
             // Loopback browser for spotify auth
             implementation("io.ktor:ktor-server-netty:2.3.12")
+
+            implementation(libs.ktor.client.content.negotiation)
+            implementation(libs.ktor.serialization.kotlinx.json)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
@@ -42,9 +51,20 @@ kotlin {
             implementation(compose.desktop.currentOs)
             implementation(libs.kotlinx.coroutinesSwing)
         }
+        val jvmMain by getting {
+            // Add the KSP generated directory to the JVM source set
+            kotlin.srcDir("build/generated/ksp/jvm/jvmMain/kotlin")
+        }
     }
 }
 
+dependencies {
+    add("kspJvm", libs.androidx.room.compiler)
+}
+
+ksp {
+    arg("room.generateKotlin", "true")
+}
 
 compose.desktop {
     application {
@@ -56,4 +76,10 @@ compose.desktop {
             packageVersion = "1.0.0"
         }
     }
+}
+
+composeCompiler {
+    featureFlags.set(emptyList())
+    // Disable source information to ensure a clean build on Kotlin 2.1.0
+    includeSourceInformation.set(false)
 }
