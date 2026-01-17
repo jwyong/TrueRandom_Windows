@@ -7,7 +7,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import com.truerandom.db.entity.LikedTrackEntity
 import com.truerandom.db.entity.PlayCountEntity
-import com.truerandom.db.model.TrackUIDetails
+import com.truerandom.model.TrackUIDetails
 
 /**
  * Data Access Object for the LikedTrackEntity.

@@ -1,4 +1,4 @@
-package com.truerandom.db.model
+package com.truerandom.model
 
 data class LikedTrackWithCount(
     val trackUri: String,

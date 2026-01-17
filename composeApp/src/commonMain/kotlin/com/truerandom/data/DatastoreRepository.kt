@@ -27,4 +27,8 @@ class DatastoreRepository(private val dataStore: DataStore<Preferences>) {
     suspend fun saveRefreshToken(token: String) {
         dataStore.edit { it[REFRESH_TOKEN_KEY] = token }
     }
+
+    suspend fun clearDatastore() {
+        dataStore.edit { it.clear() }
+    }
 }

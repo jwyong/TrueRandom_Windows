@@ -1,4 +1,4 @@
-package com.truerandom.db.model
+package com.truerandom.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable

@@ -1,7 +1,7 @@
 package com.truerandom.api
 
 import com.truerandom.build.AppConfig
-import com.truerandom.db.model.SpotifyTokenResponse
+import com.truerandom.model.SpotifyTokenResponse
 import com.truerandom.util.Resource
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -29,6 +29,7 @@ private val AUTH_SCOPE = listOf(
     "user-read-private",
     "streaming",
     "user-library-read",
+    "user-read-playback-state",
     "user-modify-playback-state"
 ).joinToString(" ")
 

@@ -6,8 +6,8 @@ import com.truerandom.api.AuthApiRepository
 import com.truerandom.api.TrackApiRepository
 import com.truerandom.data.DatastoreRepository
 import com.truerandom.db.entity.LikedTrackEntity
-import com.truerandom.db.model.SpotifyTokenResponse
 import com.truerandom.db.repository.TrackDbRepository
+import com.truerandom.model.SpotifyTokenResponse
 import com.truerandom.util.Resource
 import io.ktor.server.application.call
 import io.ktor.server.engine.embeddedServer
@@ -15,17 +15,24 @@ import io.ktor.server.netty.Netty
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.getString
 import truerandomwindows.composeapp.generated.resources.Res
+import truerandomwindows.composeapp.generated.resources.access_token_expired
 import truerandomwindows.composeapp.generated.resources.connected_to_spotify
 import truerandomwindows.composeapp.generated.resources.fetch_liked_tracks
 import truerandomwindows.composeapp.generated.resources.fetch_liked_tracks_success
+import truerandomwindows.composeapp.generated.resources.logout_success
+import truerandomwindows.composeapp.generated.resources.pause_failed
+import truerandomwindows.composeapp.generated.resources.play_failed
 
 class MainViewModel(
     private val authApiRepository: AuthApiRepository,
@@ -34,13 +41,16 @@ class MainViewModel(
     private val datastoreRepository: DatastoreRepository
 ) : ViewModel() {
     init {
-        // Start checking auth flow
+        launchSpotifyDesktop()
         startCheckAuthFlow()
     }
 
     private val _uiState = MutableStateFlow(MainScreenState())
     val uiState = _uiState.asStateFlow()
 
+    /**
+     * Auth related
+     **/
     // Auth flow entry point - check if refreshToken available in datastore
     private fun startCheckAuthFlow() {
         viewModelScope.launch {
@@ -101,17 +111,62 @@ class MainViewModel(
         }
     }
 
+    // Save relevant token data to datatstore
     private suspend fun saveTokenResponseToDatastore(tokenResponse: SpotifyTokenResponse) {
         println("Saving token response to datastore: $tokenResponse")
 
         datastoreRepository.saveAccessToken(tokenResponse.accessToken)
-        val accessTokenExpiry = System.currentTimeMillis() + tokenResponse.expiresIn
+        val accessTokenExpiry = System.currentTimeMillis() + tokenResponse.expiresIn * 1000
         datastoreRepository.saveAccessTokenExpiry(accessTokenExpiry)
 
         tokenResponse.refreshToken?.let { datastoreRepository.saveRefreshToken(it) }
     }
 
-    // Check liked tracks flow
+    // Get a working access token either from datastore or refresh
+    private suspend fun getWorkingAccessToken(): String {
+        val expiryTime = datastoreRepository.getAccessTokenExpiry() ?: 0L
+        val currentTime = System.currentTimeMillis()
+
+        // 5 minutes in milliseconds
+        val buffer = 5 * 60 * 1000
+
+        if (currentTime + buffer >= expiryTime) {
+            println("Token is close to expiring. Refreshing...")
+
+            val refreshToken = datastoreRepository.getRefreshToken()
+            if (refreshToken?.isNotBlank() == true) {
+                // Refresh token available - use it to refresh accessToken
+                println("RefreshToken available - refreshing accessToken...")
+
+                val refreshTokenResponse = authApiRepository.refreshAccessToken(refreshToken)
+
+                println("Refresh token response: $refreshTokenResponse")
+
+                if (refreshTokenResponse.isSuccess) {
+                    // Success - save to datastore
+                    return refreshTokenResponse.data?.let {
+                        saveTokenResponseToDatastore(it)
+                        it.accessToken
+                    } ?: ""
+                } else {
+                    println("Refresh token response was not successful: $refreshTokenResponse")
+                }
+            } else {
+                println("Refresh token is null or blank, need re-do full auth flow")
+                showSnackbar(getString(Res.string.access_token_expired))
+            }
+
+        } else {
+            // Token is still healthy
+            return datastoreRepository.getAccessToken() ?: ""
+        }
+
+        return ""
+    }
+
+    /**
+     * Sync tracks related
+     **/
     suspend fun checkAndFetchLikedSongs() {
         println("Checking liked songs...")
 
@@ -133,10 +188,7 @@ class MainViewModel(
         println("fetchAndSyncLikedTracks")
         showSnackbar(getString(Res.string.fetch_liked_tracks))
 
-        val accessToken = datastoreRepository.getAccessToken()?: run {
-            println("checkAndFetchLikedSongs: dataStore accessToken is NULL.")
-            return
-        }
+        val accessToken = getWorkingAccessToken()
 
         // Clear off db first
         trackDbRepository.deleteAllTracks()
@@ -195,6 +247,164 @@ class MainViewModel(
             }
         }
         server.start(wait = false)
+    }
+
+    // Logout - clear dataStore and...? TODO: JAY_LOG - just clear datastore for now
+    fun logoutBtnOnClick() {
+        viewModelScope.launch {
+            datastoreRepository.clearDatastore()
+            showSnackbar(getString(Res.string.logout_success))
+        }
+    }
+
+    /**
+     * Play logics
+     **/
+    fun playPauseBtnOnClick() {
+        viewModelScope.launch {
+            val accessToken = getWorkingAccessToken()
+
+            // Small delay for spotify app to launch and connect properly
+//            delay(5000)
+//            val activeDeviceId = trackApiRepository.getActiveDeviceId(accessToken)
+//            println("Active device ID: $activeDeviceId")
+//
+//            if (activeDeviceId.isNullOrBlank()) {
+//                println("No active device found")
+//                showSnackbar(getString(Res.string.no_device_found))
+//            }
+
+            if (_uiState.value.isPlaying) {
+                // Is playing - just send pause
+                stopPlaybackObserver()
+
+                val isPauseSuccess = trackApiRepository.pausePlayback(accessToken)
+                println("Pause success: $isPauseSuccess")
+
+                if (!isPauseSuccess) {
+                    showSnackbar(getString(Res.string.pause_failed))
+                } else {
+                    // Update UI
+                    _uiState.update {
+                        it.copy(isPlaying = !_uiState.value.isPlaying)
+                    }
+                }
+
+            } else {
+                // Is paused or stopped - check currentTrackUri and play
+                // TODO: JAY_LOG - just start play for now
+                val isPlaySuccess = playNextRandomTrack(accessToken)
+                println("Play success: $isPlaySuccess")
+
+                if (!isPlaySuccess) {
+                    showSnackbar(getString(Res.string.play_failed))
+                } else {
+                    // Update UI
+                    _uiState.update {
+                        it.copy(isPlaying = !_uiState.value.isPlaying)
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun playNextRandomTrack(accessToken: String): Boolean {
+        val currentTrackUri = trackDbRepository.getRandomLeastPlayedTrack() ?: ""
+        println("Current track URI: $currentTrackUri")
+
+        val isPlaySuccess = trackApiRepository.playTrackFromStart(accessToken, currentTrackUri)
+
+        if (isPlaySuccess) startPlaybackObserver() else stopPlaybackObserver()
+
+        return isPlaySuccess
+    }
+
+    // Schedule a playback check
+    fun schedulePlaybackEndCheck(trackUri: String) {
+        viewModelScope.launch {
+            val success = spotifyService.playTrack(trackUri)
+            if (!success) return@launch
+
+            // 1. Get the current state once to find out the duration
+            val state = spotifyService.getPlayerState() ?: return@launch
+            val duration = state.item?.durationMs ?: return@launch
+            val progress = state.progressMs
+
+            // 2. Calculate "Safe Sleep"
+            // We wait until 3 seconds before the song ends
+            val timeToWait = (duration - progress) - 3000
+
+            if (timeToWait > 0) {
+                delay(timeToWait)
+            }
+
+            // 3. THE VERIFICATION STEP
+            // Before jumping to the next track, check if the user
+            // actually finished the song or if they paused it 2 minutes ago.
+            val finalCheck = spotifyService.getPlayerState()
+            if (finalCheck != null && finalCheck.isPlaying) {
+                val remaining = (finalCheck.item?.durationMs ?: 0) - finalCheck.progressMs
+                if (remaining < 5000) { // Still near the end?
+                    playNextRandomTrack()
+                } else {
+                    // Something changed (user skipped back or manually changed tracks)
+                    // Re-sync your timer here
+                }
+            }
+        }
+    }
+
+    /**
+     * Playback state poll observer
+     **/
+    private var playbackObserverJob: Job? = null
+
+    private fun startPlaybackObserver() {
+        playbackObserverJob?.cancel() // Reset if one is running
+        playbackObserverJob = viewModelScope.launch {
+            while (isActive) {
+                val accessToken = getWorkingAccessToken()
+                if (accessToken.isBlank()) break
+
+                val state = trackApiRepository.getPlayerState(accessToken)
+                println("Player state: $state")
+
+                if (state != null) {
+                    // 2. Check if the track is finished
+                    // We assume it's finished if there's less than 2 seconds left
+                    val duration = state.item?.durationMs ?: 0
+                    val remaining = duration - state.progressMs
+
+                    println("Remaining time: $remaining ms")
+
+                    if (remaining < 2000 && state.isPlaying) {
+                        delay(3000)
+                        playNextRandomTrack(accessToken)
+
+                        // Cancel off this job after playing next track
+                        playbackObserverJob?.cancel()
+                    }
+                }
+
+                // Poll every 2 seconds for a balance between responsiveness and battery life
+                delay(2000)
+            }
+        }
+    }
+
+    private fun stopPlaybackObserver() {
+        playbackObserverJob?.cancel()
+    }
+
+    // For launching spotify 1 time
+    private fun launchSpotifyDesktop() {
+        try {
+            // This uses the Windows shell to open the spotify "link"
+            // which triggers the installed desktop app.
+            ProcessBuilder("cmd", "/c", "start spotify:").start()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     /**

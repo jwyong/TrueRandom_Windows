@@ -1,8 +1,16 @@
 <resources>
     <string name="app_name">TrueRandom</string>
 
+    <string name="access_token_expired">Access token expired</string>
+    <string name="no_device_found">No active device found</string>
+    <string name="play_failed">Failed to play track</string>
+    <string name="pause_failed">Failed to pause track</string>
+
     <string name="fetch_liked_tracks">Fetching liked tracks...</string>
     <string name="fetch_liked_tracks_success">Liked tracks fetched successfully!</string>
 
     <string name="connected_to_spotify">Connected to Spotify!</string>
+    <string name="logout_success">Logged out successfully!</string>
+
+    <string name="no_track">No track playing</string>
 </resources>

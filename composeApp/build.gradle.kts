@@ -84,6 +84,9 @@ kotlin {
             // Essential for using koinViewModel() in App.kt
             implementation(libs.koin.compose)
             implementation(libs.koin.compose.viewmodel)
+
+            implementation("org.jetbrains.compose.components:components-resources:1.6.11") // check for latest version
+            implementation("org.jetbrains.compose.material:material-icons-extended:1.6.11")
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
