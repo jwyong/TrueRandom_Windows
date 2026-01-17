@@ -7,7 +7,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import com.truerandom.db.entity.LikedTrackEntity
 import com.truerandom.db.entity.PlayCountEntity
-import com.truerandom.model.TrackUIDetails
+import com.truerandom.model.TrackDetails
 
 /**
  * Data Access Object for the LikedTrackEntity.
@@ -65,7 +65,8 @@ interface TrackDao {
      *
      * @return A list of track URIs (String) sharing the lowest play count.
      */
-    @Query("""
+    @Query(
+        """
         SELECT lt.trackUri 
         FROM liked_tracks lt
         LEFT JOIN play_count pc ON lt.trackUri = pc.trackUri
@@ -74,7 +75,8 @@ interface TrackDao {
             FROM liked_tracks lt2
             LEFT JOIN play_count pc2 ON lt2.trackUri = pc2.trackUri
         )
-    """)
+    """
+    )
     suspend fun getLeastPlayedTrackUris(): List<String>
 
     /**
@@ -83,13 +85,21 @@ interface TrackDao {
      * * @param uri The unique identifier (trackUri) for the track.
      * @return LikedTrackEntity object containing the requested fields, or null if not found.
      */
-    @Query("""
-        SELECT trackName, artistName, albumCoverUrl 
-        FROM liked_tracks 
-        WHERE trackUri = :uri
-        LIMIT 1
-    """)
-    suspend fun getTrackDetailsByUri(uri: String): TrackUIDetails?
+    @Query(
+        """
+    SELECT 
+        lt.trackUri, 
+        lt.trackName, 
+        lt.artistName, 
+        lt.albumCoverUrl, 
+        COALESCE(pc.playCount, 0) AS playCount
+    FROM liked_tracks lt
+    LEFT JOIN play_count pc ON lt.trackUri = pc.trackUri
+    WHERE lt.trackUri = :uri
+    LIMIT 1
+    """
+    )
+    suspend fun getTrackDetailsByUri(uri: String): TrackDetails?
 
 //    /**
 //     * Get a paged list of liked tracks along with play count, to be displayed on main page liked

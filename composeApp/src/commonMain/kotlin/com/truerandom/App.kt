@@ -43,7 +43,8 @@ import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.viewmodel.koinViewModel
 import truerandomwindows.composeapp.generated.resources.Res
 import truerandomwindows.composeapp.generated.resources.app_name
-import truerandomwindows.composeapp.generated.resources.no_track
+import truerandomwindows.composeapp.generated.resources.no_track_playing
+import truerandomwindows.composeapp.generated.resources.unknown_track
 
 @Composable
 @Preview
@@ -131,8 +132,17 @@ fun PlayerBottomBar(mainViewModel: MainViewModel, state: MainScreenState) {
         ) {
             // Top Part: Artist - Track
             Text(
-//                text = "${state.currentArtistName ?: "Unknown"} — ${state.currentTrackName ?: "No Track"}",
-                text = stringResource(Res.string.no_track),
+                text = with (state.currentTrackDetails) {
+                    if (this != null) {
+                        "[$playCount] $artistName — $trackName"
+                    } else {
+                        if (state.isPlaying) {
+                            stringResource(Res.string.unknown_track)
+                        } else {
+                            stringResource(Res.string.no_track_playing)
+                        }
+                    }
+                },
                 style = MaterialTheme.typography.titleMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis

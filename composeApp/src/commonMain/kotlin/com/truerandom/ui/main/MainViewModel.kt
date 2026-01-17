@@ -7,7 +7,10 @@ import com.truerandom.api.TrackApiRepository
 import com.truerandom.data.DatastoreRepository
 import com.truerandom.db.entity.LikedTrackEntity
 import com.truerandom.db.repository.TrackDbRepository
+import com.truerandom.model.SpotifyErrorResponse
 import com.truerandom.model.SpotifyTokenResponse
+import com.truerandom.model.TrackDetails
+import com.truerandom.util.PlaybackManager
 import com.truerandom.util.Resource
 import io.ktor.server.application.call
 import io.ktor.server.engine.embeddedServer
@@ -17,12 +20,12 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.getString
 import truerandomwindows.composeapp.generated.resources.Res
@@ -47,6 +50,9 @@ class MainViewModel(
 
     private val _uiState = MutableStateFlow(MainScreenState())
     val uiState = _uiState.asStateFlow()
+
+    // Current track info
+    private val currentTrackDetails = MutableStateFlow<TrackDetails?>(null)
 
     /**
      * Auth related
@@ -276,13 +282,19 @@ class MainViewModel(
 
             if (_uiState.value.isPlaying) {
                 // Is playing - just send pause
-                stopPlaybackObserver()
+                stopPlaybackEndCheck()
 
-                val isPauseSuccess = trackApiRepository.pausePlayback(accessToken)
-                println("Pause success: $isPauseSuccess")
+                val pauseResult = trackApiRepository.pausePlayback(accessToken)
+                println("Pause success: $pauseResult")
 
-                if (!isPauseSuccess) {
-                    showSnackbar(getString(Res.string.pause_failed))
+                if (!pauseResult.isSuccess) {
+                    showSnackbar(
+                        getString(
+                            Res.string.pause_failed,
+                            pauseResult.data?.error?.message ?: ""
+                        )
+                    )
+
                 } else {
                     // Update UI
                     _uiState.update {
@@ -293,13 +305,16 @@ class MainViewModel(
             } else {
                 // Is paused or stopped - check currentTrackUri and play
                 // TODO: JAY_LOG - just start play for now
-                val isPlaySuccess = playNextRandomTrack(accessToken)
-                println("Play success: $isPlaySuccess")
+                val playResult = playNextRandomTrack(accessToken, false)
+                println("Play success: ${playResult.isSuccess}")
 
-                if (!isPlaySuccess) {
-                    showSnackbar(getString(Res.string.play_failed))
+                if (!playResult.isSuccess) {
+                    val rawMessage = playResult.data?.error?.message ?: ""
+                    showSnackbar(
+                        getString(Res.string.play_failed, rawMessage)
+                    )
                 } else {
-                    // Update UI
+                    // Update UI only if play was successful
                     _uiState.update {
                         it.copy(isPlaying = !_uiState.value.isPlaying)
                     }
@@ -308,50 +323,120 @@ class MainViewModel(
         }
     }
 
-    private suspend fun playNextRandomTrack(accessToken: String): Boolean {
-        val currentTrackUri = trackDbRepository.getRandomLeastPlayedTrack() ?: ""
-        println("Current track URI: $currentTrackUri")
-
-        val isPlaySuccess = trackApiRepository.playTrackFromStart(accessToken, currentTrackUri)
-
-        if (isPlaySuccess) startPlaybackObserver() else stopPlaybackObserver()
-
-        return isPlaySuccess
-    }
-
-    // Schedule a playback check
-    fun schedulePlaybackEndCheck(trackUri: String) {
-        viewModelScope.launch {
-            val success = spotifyService.playTrack(trackUri)
-            if (!success) return@launch
-
-            // 1. Get the current state once to find out the duration
-            val state = spotifyService.getPlayerState() ?: return@launch
-            val duration = state.item?.durationMs ?: return@launch
-            val progress = state.progressMs
-
-            // 2. Calculate "Safe Sleep"
-            // We wait until 3 seconds before the song ends
-            val timeToWait = (duration - progress) - 3000
-
-            if (timeToWait > 0) {
-                delay(timeToWait)
-            }
-
-            // 3. THE VERIFICATION STEP
-            // Before jumping to the next track, check if the user
-            // actually finished the song or if they paused it 2 minutes ago.
-            val finalCheck = spotifyService.getPlayerState()
-            if (finalCheck != null && finalCheck.isPlaying) {
-                val remaining = (finalCheck.item?.durationMs ?: 0) - finalCheck.progressMs
-                if (remaining < 5000) { // Still near the end?
-                    playNextRandomTrack()
-                } else {
-                    // Something changed (user skipped back or manually changed tracks)
-                    // Re-sync your timer here
+    // Increment current track play count, then play next random track
+    private suspend fun playNextRandomTrack(
+        accessToken: String,
+        shouldIncrementCount: Boolean
+    ): Resource<SpotifyErrorResponse> {
+        // Increment currently playing track details in parallel (only for when track end)
+        if (shouldIncrementCount) {
+            coroutineScope {
+                launch {
+                    _uiState.value.currentTrackDetails?.trackUri?.let { currentTrackUri ->
+                        trackDbRepository.incrementPlayCount(currentTrackUri)
+                    }
                 }
             }
         }
+
+        // Get next random trackUri to be played
+        val nextTrackToPlayUri = trackDbRepository.getRandomLeastPlayedTrack() ?: ""
+        println("nextTrackToPlay URI: $nextTrackToPlayUri")
+
+        return playTrackFromStart(accessToken, nextTrackToPlayUri)
+    }
+
+    // Play a specific trackUri on spotify (from start of track)
+    private suspend fun playTrackFromStart(
+        accessToken: String,
+        trackUri: String
+    ): Resource<SpotifyErrorResponse> {
+        val playResult = trackApiRepository.playTrackFromStart(accessToken, trackUri)
+        println("playTrackFromStart: playResult = ${playResult.isSuccess}")
+
+        if (playResult.isSuccess) {
+            // Update UI first
+            val nextTrackDetails = trackDbRepository.getTrackDetailsByUri(trackUri)
+            println("Next track details: $nextTrackDetails")
+            _uiState.update { it.copy(currentTrackDetails = nextTrackDetails) }
+
+            // THEN schedule playback end for this track, coz this will kill off the current coroutine job
+            schedulePlaybackEndCheck(trackUri)
+        }
+
+        return playResult
+    }
+
+    // Schedule a playback check
+    private fun schedulePlaybackEndCheck(trackUri: String) {
+        println("Scheduling playback end check for $trackUri...")
+
+        PlaybackManager.playbackEndCheckJob?.cancel()
+        PlaybackManager.playbackEndCheckJob = PlaybackManager.playbackEndCheckScope.launch {
+            recursivePlaybackEndCheck(trackUri)
+        }
+    }
+
+    private suspend fun recursivePlaybackEndCheck(trackUri: String) {
+        // 1. Get the current state once to find out the duration
+        val accessToken = getWorkingAccessToken()
+        val state = trackApiRepository.getPlayerState(accessToken) ?: return
+        println("Player state: $state")
+
+        val duration = state.item?.durationMs ?: return
+        val progress = state.progressMs
+
+        // 2. Calculate "Safe Sleep"
+        // We wait until 3 seconds before the song ends
+        val timeToWait = (duration - progress) - 5000
+
+        println("Time to wait: $timeToWait ms")
+
+        if (timeToWait > 0) {
+            delay(timeToWait)
+        }
+        println("Playback end check complete, verifying playerState for $trackUri...")
+
+        // 3. THE VERIFICATION STEP
+        // Before jumping to the next track, check if the user
+        // actually finished the song or if they paused it 2 minutes ago.
+        val stateAfterDelay = trackApiRepository.getPlayerState(accessToken)
+        println("Player state after delay: $stateAfterDelay")
+
+        if (stateAfterDelay != null && stateAfterDelay.isPlaying) {
+            val remaining = (stateAfterDelay.item?.durationMs ?: 0) - stateAfterDelay.progressMs
+            println("Remaining time: $remaining ms")
+
+            if (remaining <= 5000) {
+                // Near end - just delay 3s then play next random
+                println("Near end - playing next track...")
+
+                val accessToken = getWorkingAccessToken()
+                delay(remaining + 1000)
+                val playResult = playNextRandomTrack(accessToken, true)
+                println("Play result after delay: ${playResult.isSuccess}")
+
+                if (!playResult.isSuccess) {
+                    showSnackbar(
+                        getString(
+                            Res.string.play_failed,
+                            playResult.data?.error?.message ?: ""
+                        )
+                    )
+                    _uiState.update { it.copy(isPlaying = false) }
+                }
+
+            } else {
+                // Still far from end - reschedule check
+                println("Still far from end - reschedule check...")
+                recursivePlaybackEndCheck(trackUri)
+            }
+        }
+    }
+
+    private fun stopPlaybackEndCheck() {
+        println("Stopping playback end check...")
+        PlaybackManager.playbackEndCheckJob?.cancel()
     }
 
     /**
@@ -359,42 +444,58 @@ class MainViewModel(
      **/
     private var playbackObserverJob: Job? = null
 
-    private fun startPlaybackObserver() {
-        playbackObserverJob?.cancel() // Reset if one is running
-        playbackObserverJob = viewModelScope.launch {
-            while (isActive) {
-                val accessToken = getWorkingAccessToken()
-                if (accessToken.isBlank()) break
-
-                val state = trackApiRepository.getPlayerState(accessToken)
-                println("Player state: $state")
-
-                if (state != null) {
-                    // 2. Check if the track is finished
-                    // We assume it's finished if there's less than 2 seconds left
-                    val duration = state.item?.durationMs ?: 0
-                    val remaining = duration - state.progressMs
-
-                    println("Remaining time: $remaining ms")
-
-                    if (remaining < 2000 && state.isPlaying) {
-                        delay(3000)
-                        playNextRandomTrack(accessToken)
-
-                        // Cancel off this job after playing next track
-                        playbackObserverJob?.cancel()
-                    }
-                }
-
-                // Poll every 2 seconds for a balance between responsiveness and battery life
-                delay(2000)
-            }
-        }
-    }
-
-    private fun stopPlaybackObserver() {
-        playbackObserverJob?.cancel()
-    }
+    // TODO: JAY_LOG - polling method, remove if unnecessary
+//    private fun startPlaybackObserver(currentTrackUri: String) {
+//        println("Starting playback observer for $currentTrackUri...")
+//
+//        playbackObserverJob?.cancel() // Reset if one is running
+//        playbackObserverJob = viewModelScope.launch {
+//            while (isActive) {
+//                val accessToken = getWorkingAccessToken()
+//                if (accessToken.isBlank()) break
+//
+//                val state = trackApiRepository.getPlayerState(accessToken)
+//                println("Player state: $state")
+//
+//                if (state != null) {
+//                    // 2. Check if the track is finished
+//                    // We assume it's finished if there's less than 2 seconds left
+//                    val duration = state.item?.durationMs ?: 0
+//                    val remaining = duration - state.progressMs
+//
+//                    println("Remaining time: $remaining ms")
+//
+//                    if (remaining < 2000 && state.isPlaying) {
+//                        delay(3000)
+//
+//                        // Increment play count of current track
+//                        trackDbRepository.incrementPlayCount(currentTrackUri)
+//
+//                        val currentTrackLabel = with(_uiState.value.currentTrackDetails) {
+//                            if (this != null) {
+//                                "$trackName - $artistName"
+//                            } else {
+//                                getString(Res.string.unknown_track)
+//                            }
+//                        }
+//                        println("Track finished - incrementing play count for $currentTrackLabel ($currentTrackUri)")
+//
+//                        playNextRandomTrack(accessToken)
+//
+//                        // Cancel off this job after playing next track
+//                        playbackObserverJob?.cancel()
+//                    }
+//                }
+//
+//                // Poll every 2 seconds for a balance between responsiveness and battery life
+//                delay(2000)
+//            }
+//        }
+//    }
+//
+//    private fun stopPlaybackObserver() {
+//        playbackObserverJob?.cancel()
+//    }
 
     // For launching spotify 1 time
     private fun launchSpotifyDesktop() {

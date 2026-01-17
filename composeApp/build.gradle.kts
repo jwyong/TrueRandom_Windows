@@ -87,6 +87,9 @@ kotlin {
 
             implementation("org.jetbrains.compose.components:components-resources:1.6.11") // check for latest version
             implementation("org.jetbrains.compose.material:material-icons-extended:1.6.11")
+
+//            implementation("io.github.jan-tennert.supabase:postgrest-kt:3.0.1")
+//            implementation("io.github.jan-tennert.supabase:gotrue-kt:3.0.1") // Required for Auth
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

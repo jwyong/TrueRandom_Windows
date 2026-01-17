@@ -4,8 +4,10 @@ import com.truerandom.model.DeviceResponse
 import com.truerandom.model.LikedSongsResponse
 import com.truerandom.model.PlayRequest
 import com.truerandom.model.PlayerStateResponse
+import com.truerandom.model.SpotifyErrorResponse
 import com.truerandom.util.JsonUtil
 import com.truerandom.util.JsonUtil.jsonObj
+import com.truerandom.util.Resource
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.cio.CIO
@@ -47,7 +49,7 @@ class TrackApiRepository {
     }
 
     // Play a specific trackUri on spotify (from start of track)
-    suspend fun playTrackFromStart(accessToken: String, trackUri: String, deviceId: String? = null): Boolean {
+    suspend fun playTrackFromStart(accessToken: String, trackUri: String, deviceId: String? = null): Resource<SpotifyErrorResponse> {
         val client = HttpClient(CIO) {
             install(ContentNegotiation) { json(jsonObj) }
         }
@@ -61,23 +63,24 @@ class TrackApiRepository {
                 contentType(ContentType.Application.Json)
                 setBody(PlayRequest(uris = listOf(trackUri)))
             }
+            println("playTrackFromStart: response.status = ${response.status}")
 
             if (response.status == HttpStatusCode.NoContent) {
-                true
+                Resource.Success()
             } else {
-                val errorBody = response.bodyAsText()
+                val errorBody = response.body<SpotifyErrorResponse>()
                 println("Failed to play track. Status: ${response.status}. Body: $errorBody")
-                false
+                Resource.Error(errorBody)
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            false
+            Resource.Error(message = e.message)
         } finally {
             client.close()
         }
     }
 
-    suspend fun pausePlayback(accessToken: String): Boolean {
+    suspend fun pausePlayback(accessToken: String): Resource<SpotifyErrorResponse> {
         val client = HttpClient(CIO) {
             install(ContentNegotiation) { json(jsonObj) }
         }
@@ -88,15 +91,15 @@ class TrackApiRepository {
 
             // Spotify returns 204 NoContent if the pause was successful
             if (response.status == HttpStatusCode.NoContent || response.status == HttpStatusCode.OK) {
-                true
+                Resource.Success()
             } else {
-                val errorBody = response.bodyAsText()
+                val errorBody = response.body<SpotifyErrorResponse>()
                 println("Failed to pause. Status: ${response.status}. Body: $errorBody")
-                false
+                Resource.Error(errorBody)
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            false
+            Resource.Error(message = e.message)
         } finally {
             client.close()
         }
