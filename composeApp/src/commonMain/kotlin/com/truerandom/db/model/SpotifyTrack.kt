@@ -131,12 +131,3 @@ data class ExternalUrls(
 data class ExternalIds(
     val isrc: String? = null
 )
-
-@Serializable
-data class TokenResponse(
-    @SerialName("access_token") val accessToken: String,
-    @SerialName("token_type") val tokenType: String,
-    @SerialName("expires_in") val expiresIn: Int,
-    @SerialName("refresh_token") val refreshToken: String? = null,
-    val scope: String? = null
-)
