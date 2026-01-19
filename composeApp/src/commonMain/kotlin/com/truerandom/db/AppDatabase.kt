@@ -10,7 +10,7 @@ import com.truerandom.db.entity.LikedTrackEntity
 import com.truerandom.db.entity.PlayCountEntity
 import kotlinx.coroutines.Dispatchers
 
-@Database(entities = [LikedTrackEntity::class, PlayCountEntity::class], version = 1)
+@Database(entities = [LikedTrackEntity::class, PlayCountEntity::class], version = 3)
 @ConstructedBy(AppDatabaseConstructor::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun trackDao(): TrackDao

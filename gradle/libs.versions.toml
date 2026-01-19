@@ -8,11 +8,14 @@ kotlinx-coroutines = "1.10.2"
 ktor = "2.3.12"
 room = "2.7.0-alpha11" # Use the KMP-compatible version
 ksp = "2.1.0-1.0.29"   # Ensure this matches your Kotlin version
+koin = "4.0.0"
+koin-compose = "4.0.0"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 kotlin-testJunit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
 junit = { module = "junit:junit", version.ref = "junit" }
+androidx-lifecycle-viewmodel = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel", version.ref = "androidx-lifecycle" }
 androidx-lifecycle-viewmodelCompose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "androidx-lifecycle" }
 androidx-lifecycle-runtimeCompose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "androidx-lifecycle" }
 kotlinx-coroutinesSwing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "kotlinx-coroutines" }
@@ -21,6 +24,13 @@ ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx
 
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
+
+# The core engine for all platforms
+koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }
+# Compose integration (provides KoinApplication, koinViewModel, etc.)
+koin-compose = { module = "io.insert-koin:koin-compose", version.ref = "koin-compose" }
+# Specific ViewModel support for Compose Multiplatform
+koin-compose-viewmodel = { module = "io.insert-koin:koin-compose-viewmodel", version.ref = "koin" }
 
 [plugins]
 composeHotReload = { id = "org.jetbrains.compose.hot-reload", version.ref = "composeHotReload" }
