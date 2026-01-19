@@ -7,6 +7,7 @@ import com.truerandom.api.TrackApiRepository
 import com.truerandom.data.DatastoreRepository
 import com.truerandom.db.entity.LikedTrackEntity
 import com.truerandom.db.repository.TrackDbRepository
+import com.truerandom.model.PlayerStateResponse
 import com.truerandom.model.SpotifyErrorResponse
 import com.truerandom.model.SpotifyTokenResponse
 import com.truerandom.model.TrackDetails
@@ -373,64 +374,101 @@ class MainViewModel(
 
         PlaybackManager.playbackEndCheckJob?.cancel()
         PlaybackManager.playbackEndCheckJob = PlaybackManager.playbackEndCheckScope.launch {
-            recursivePlaybackEndCheck(trackUri)
+            // Just-start playbackEnd check
+            recursivePlaybackEndCheck(trackUri, true)
         }
     }
 
-    private suspend fun recursivePlaybackEndCheck(trackUri: String) {
+    private var currentTrackUri: String? = null
+    private suspend fun recursivePlaybackEndCheck(trackUri: String, isFirstCheck: Boolean) {
         // 1. Get the current state once to find out the duration
-        val accessToken = getWorkingAccessToken()
-        val state = trackApiRepository.getPlayerState(accessToken) ?: return
-        println("Player state: $state")
-
-        val duration = state.item?.durationMs ?: return
+        println("Checking player state...")
+        val state = checkPlayerState(trackUri, isFirstCheck)
+        val duration = state?.item?.durationMs ?: return
         val progress = state.progressMs
 
         // 2. Calculate "Safe Sleep"
-        // We wait until 3 seconds before the song ends
-        val timeToWait = (duration - progress) - 5000
-
+        var timeToWait = (duration - progress) - 5000
         println("Time to wait: $timeToWait ms")
 
         if (timeToWait > 0) {
+            // Delay max 1 min before next check
+            if (timeToWait > 60000) {
+                timeToWait = 60000
+                println("Time to wait capped at 1 min: $timeToWait ms")
+            }
+
             delay(timeToWait)
         }
-        println("Playback end check complete, verifying playerState for $trackUri...")
 
-        // 3. THE VERIFICATION STEP
-        // Before jumping to the next track, check if the user
-        // actually finished the song or if they paused it 2 minutes ago.
-        val stateAfterDelay = trackApiRepository.getPlayerState(accessToken)
-        println("Player state after delay: $stateAfterDelay")
+        // Get fresh accessToken and state again after delay
+        println("Waited $timeToWait, verifying playerState for $trackUri...")
+        checkPlayerState(trackUri, false)
+    }
 
-        if (stateAfterDelay != null && stateAfterDelay.isPlaying) {
-            val remaining = (stateAfterDelay.item?.durationMs ?: 0) - stateAfterDelay.progressMs
-            println("Remaining time: $remaining ms")
+    // Check playerState of trackUri and do trackEnd actions accordingly
+    private suspend fun checkPlayerState(trackUri: String, isFirstCheck: Boolean): PlayerStateResponse? {
+        var accessToken = getWorkingAccessToken()
+        val state = trackApiRepository.getPlayerState(accessToken)
+        println("Player state: $state")
 
-            if (remaining <= 5000) {
-                // Near end - just delay 3s then play next random
-                println("Near end - playing next track...")
+        if (state != null) {
+            // For first check, just return the response to process
+            if (isFirstCheck) return state
 
-                val accessToken = getWorkingAccessToken()
-                delay(remaining + 1000)
-                val playResult = playNextRandomTrack(accessToken, true)
-                println("Play result after delay: ${playResult.isSuccess}")
-
-                if (!playResult.isSuccess) {
-                    showSnackbar(
-                        getString(
-                            Res.string.play_failed,
-                            playResult.data?.error?.message ?: ""
-                        )
-                    )
-                    _uiState.update { it.copy(isPlaying = false) }
+            // For recursive check, check if track has ended
+            if (!state.isPlaying && state.progressMs == 0L) {
+                // Paused at progress 0 - check if track did play and has now ended
+                if (currentTrackUri == trackUri) {
+                    // This track has been played before - means track has ended
+                    println("Track ended - playing next random...")
+                    incrementAndPlayNextRandom(accessToken)
+                } else {
+                    // This track has NOT been played before - do nothing
+                    println("Track has not been played before - do nothing...")
                 }
 
             } else {
-                // Still far from end - reschedule check
-                println("Still far from end - reschedule check...")
-                recursivePlaybackEndCheck(trackUri)
+                // Still playing - update currentTrackUri to indicate already played once
+                currentTrackUri = trackUri
+
+                // Check remaining time to determine playbackEnd
+                val remaining = (state.item?.durationMs ?: 0) - state.progressMs
+                println("Remaining time: $remaining ms")
+
+                if (remaining <= 5000) {
+                    // Near end - just delay then play next random
+                    println("Near end - playing next track...")
+
+                    delay(remaining + 1000)
+                    incrementAndPlayNextRandom(accessToken)
+
+                } else {
+                    // Still far from end - reschedule check
+                    println("Still far from end - reschedule check...")
+                    recursivePlaybackEndCheck(trackUri, false)
+                }
             }
+        } else {
+            println("PlayerState is null.")
+        }
+
+        return state
+    }
+
+    // Increment current track and play next random (at track End)
+    private suspend fun incrementAndPlayNextRandom(accessToken: String) {
+        val playResult = playNextRandomTrack(accessToken, true)
+        println("Play result after delay: ${playResult.isSuccess}")
+
+        if (!playResult.isSuccess) {
+            showSnackbar(
+                getString(
+                    Res.string.play_failed,
+                    playResult.data?.error?.message ?: ""
+                )
+            )
+            _uiState.update { it.copy(isPlaying = false) }
         }
     }
 

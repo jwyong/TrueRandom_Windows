@@ -6,7 +6,12 @@ import java.io.File
 
 // src/jvmMain/kotlin/com/truerandom/db/Database.jvm.kt
 actual fun getDatabaseBuilder(): RoomDatabase.Builder<AppDatabase> {
-    val dbFile = File(System.getProperty("user.home"), "truerandom.db")
+    // Create the folder first to prevent Room from crashing if it doesn't exist
+    val folder = File("D:/TrueRandom")
+    if (!folder.exists()) folder.mkdirs()
+
+    val dbFile = File(folder, "truerandom.db")
+
     return Room.databaseBuilder<AppDatabase>(
         name = dbFile.absolutePath,
         factory = { AppDatabaseConstructor.initialize() }
