@@ -191,7 +191,7 @@ class MainViewModel(
     }
 
     // Fetch all liked songs from api (paged 50 items) and insert to db
-    private suspend fun fetchAndSyncLikedTracks() {
+    suspend fun fetchAndSyncLikedTracks() {
         println("fetchAndSyncLikedTracks")
         showSnackbar(getString(Res.string.fetch_liked_tracks))
 
@@ -382,8 +382,11 @@ class MainViewModel(
     private var currentTrackUri: String? = null
     private suspend fun recursivePlaybackEndCheck(trackUri: String, isFirstCheck: Boolean) {
         // 1. Get the current state once to find out the duration
-        println("Checking player state...")
-        val state = checkPlayerState(trackUri, isFirstCheck)
+        println("recursivePlaybackEndCheck: starting to check player state...")
+        var accessToken = getWorkingAccessToken()
+        val state = trackApiRepository.getPlayerState(accessToken)
+        println("Player state: $state")
+
         val duration = state?.item?.durationMs ?: return
         val progress = state.progressMs
 

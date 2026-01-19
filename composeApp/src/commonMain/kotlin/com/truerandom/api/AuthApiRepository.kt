@@ -5,8 +5,6 @@ import com.truerandom.model.SpotifyTokenResponse
 import com.truerandom.util.Resource
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.forms.FormDataContent
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -14,8 +12,6 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.Parameters
 import io.ktor.http.contentType
-import io.ktor.serialization.kotlinx.json.json
-import kotlinx.serialization.json.Json
 import java.awt.Desktop
 import java.net.URI
 import java.net.URLEncoder
@@ -36,9 +32,7 @@ private val AUTH_SCOPE = listOf(
 private val CLIENT_ID = AppConfig.SPOTIFY_CLIENT_ID
 private val CLIENT_SECRET = AppConfig.SPOTIFY_CLIENT_SECRET
 
-class AuthApiRepository {
-    private val json by lazy { Json { ignoreUnknownKeys = true } }
-
+class AuthApiRepository(private val client: HttpClient) {
     private var currentCodeVerifier: String? = null
 
     // Start full auth flow (needs user consent)
@@ -71,10 +65,6 @@ class AuthApiRepository {
      **/
     // Use refresh token to get new access token (don't need user consent)
     suspend fun refreshAccessToken(savedRefreshToken: String): Resource<SpotifyTokenResponse> {
-        val client = HttpClient(CIO) {
-            install(ContentNegotiation.Plugin) { json(json) }
-        }
-
         return try {
             val httpResponse = client.post("https://accounts.spotify.com/api/token") {
                 contentType(ContentType.Application.FormUrlEncoded)
@@ -96,9 +86,6 @@ class AuthApiRepository {
             }
         } catch (e: Exception) {
             Resource.Error(message = "Exception: $e")
-
-        } finally {
-            client.close()
         }
     }
 
@@ -107,13 +94,6 @@ class AuthApiRepository {
      **/
     // Get accessToken from temp auth code (~10 mins)
     suspend fun exchangeCodeForToken(code: String): Resource<SpotifyTokenResponse> {
-        // Note: It's better to reuse a single HttpClient instance instead of creating/closing one every time
-        val client = HttpClient(CIO) {
-            install(ContentNegotiation) {
-                json(Json { ignoreUnknownKeys = true })
-            }
-        }
-
         val verifier = getVerifier() ?: return Resource.Error(message = "Verifier not found")
 
         return try {
@@ -143,9 +123,6 @@ class AuthApiRepository {
             }
         } catch (e: Exception) {
             Resource.Error(message = e.message ?: "Network failure")
-
-        } finally {
-            client.close()
         }
     }
     fun getVerifier() = currentCodeVerifier

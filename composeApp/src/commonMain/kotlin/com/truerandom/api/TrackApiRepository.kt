@@ -6,12 +6,9 @@ import com.truerandom.model.PlayRequest
 import com.truerandom.model.PlayerStateResponse
 import com.truerandom.model.SpotifyErrorResponse
 import com.truerandom.util.JsonUtil
-import com.truerandom.util.JsonUtil.jsonObj
 import com.truerandom.util.Resource
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
@@ -23,14 +20,10 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
-import io.ktor.serialization.kotlinx.json.json
 
-class TrackApiRepository {
+class TrackApiRepository(private val client: HttpClient) {
     // Fetch the FULL list of liked tracks by paging (max 50 per)
     suspend fun fetchLikedTracksPaged(accessToken: String, offset: Int): LikedSongsResponse? {
-        val client = HttpClient(CIO) {
-            install(ContentNegotiation) { json(jsonObj) }
-        }
         return try {
             val httpResponse: HttpResponse = client.get("https://api.spotify.com/v1/me/tracks") {
                 header("Authorization", "Bearer $accessToken")
@@ -43,16 +36,11 @@ class TrackApiRepository {
             } else null
         } catch (e: Exception) {
             null
-        } finally {
-            client.close()
         }
     }
 
     // Play a specific trackUri on spotify (from start of track)
     suspend fun playTrackFromStart(accessToken: String, trackUri: String, deviceId: String? = null): Resource<SpotifyErrorResponse> {
-        val client = HttpClient(CIO) {
-            install(ContentNegotiation) { json(jsonObj) }
-        }
         return try {
             println("Attempting to play track: $trackUri")
             val response: HttpResponse = client.put("https://api.spotify.com/v1/me/player/play") {
@@ -75,15 +63,10 @@ class TrackApiRepository {
         } catch (e: Exception) {
             e.printStackTrace()
             Resource.Error(message = e.message)
-        } finally {
-            client.close()
         }
     }
 
     suspend fun pausePlayback(accessToken: String): Resource<SpotifyErrorResponse> {
-        val client = HttpClient(CIO) {
-            install(ContentNegotiation) { json(jsonObj) }
-        }
         return try {
             val response: HttpResponse = client.put("https://api.spotify.com/v1/me/player/pause") {
                 header("Authorization", "Bearer $accessToken")
@@ -100,15 +83,10 @@ class TrackApiRepository {
         } catch (e: Exception) {
             e.printStackTrace()
             Resource.Error(message = e.message)
-        } finally {
-            client.close()
         }
     }
 
     suspend fun resumePlayback(accessToken: String): Boolean {
-        val client = HttpClient(CIO) {
-            install(ContentNegotiation) { json(jsonObj) }
-        }
         return try {
             // Same URL as Play, but with NO body
             val response: HttpResponse = client.put("https://api.spotify.com/v1/me/player/play") {
@@ -127,16 +105,11 @@ class TrackApiRepository {
         } catch (e: Exception) {
             e.printStackTrace()
             false
-        } finally {
-            client.close()
         }
     }
 
     // Get device id of the active spotify app instance available
     suspend fun getActiveDeviceId(accessToken: String): String? {
-        val client = HttpClient(CIO) {
-            install(ContentNegotiation) { json(jsonObj) }
-        }
         return try {
             val response: HttpResponse = client.get("https://api.spotify.com/v1/me/player/devices") {
                 header("Authorization", "Bearer $accessToken")
@@ -152,15 +125,10 @@ class TrackApiRepository {
             }
         } catch (e: Exception) {
             null
-        } finally {
-            client.close()
         }
     }
 
     suspend fun getPlayerState(accessToken: String): PlayerStateResponse? {
-        val client = HttpClient(CIO) {
-            install(ContentNegotiation) { json(jsonObj) }
-        }
         return try {
             val response: HttpResponse = client.get("https://api.spotify.com/v1/me/player") {
                 header("Authorization", "Bearer $accessToken")

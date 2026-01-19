@@ -10,10 +10,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -31,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.truerandom.ui.main.MainScreenState
 import com.truerandom.ui.main.MainViewModel
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.viewmodel.koinViewModel
 import truerandomwindows.composeapp.generated.resources.Res
@@ -123,6 +125,8 @@ fun PlayerBottomBar(mainViewModel: MainViewModel, state: MainScreenState) {
         shadowElevation = 4.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
+        val scope = rememberCoroutineScope()
+
         Column(
             modifier = Modifier
                 .padding(vertical = 12.dp, horizontal = 16.dp)
@@ -153,11 +157,11 @@ fun PlayerBottomBar(mainViewModel: MainViewModel, state: MainScreenState) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(24.dp) // Space between icons
             ) {
+                // TODO: JAY_LOG - use as logout for now
                 IconButton(onClick = {
-                    // TODO: JAY_LOG - use as logout for now
                     mainViewModel.logoutBtnOnClick()
                 }) {
-                    Icon(Icons.Default.SkipPrevious, contentDescription = "Previous")
+                    Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Previous")
                 }
 
                 // Play/Pause usually looks better slightly larger
@@ -173,8 +177,13 @@ fun PlayerBottomBar(mainViewModel: MainViewModel, state: MainScreenState) {
                     )
                 }
 
-                IconButton(onClick = { /* Next */ }) {
-                    Icon(Icons.Default.SkipNext, contentDescription = "Next")
+                // TODO: JAY_LOG - use as resync for now
+                IconButton(onClick = {
+                    scope.launch {
+                        mainViewModel.fetchAndSyncLikedTracks()
+                    }
+                }) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Next")
                 }
             }
         }
