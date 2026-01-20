@@ -42,7 +42,6 @@ import com.truerandom.ui.main.MainScreenState
 import com.truerandom.ui.main.MainViewModel
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
-import org.koin.compose.viewmodel.koinViewModel
 import truerandomwindows.composeapp.generated.resources.Res
 import truerandomwindows.composeapp.generated.resources.app_name
 import truerandomwindows.composeapp.generated.resources.no_track_playing
@@ -50,8 +49,7 @@ import truerandomwindows.composeapp.generated.resources.unknown_track
 
 @Composable
 @Preview
-fun App() {
-    val mainViewModel: MainViewModel = koinViewModel()
+fun App(mainViewModel: MainViewModel) {
     val state by mainViewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
