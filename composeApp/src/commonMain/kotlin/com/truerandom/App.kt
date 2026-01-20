@@ -98,8 +98,8 @@ fun TopBar(state: MainScreenState) {
             )
         )
 
-        // Top progress bar
-        if (state.token.isLoading || state.tracks.isLoading) {
+        // Top progress bar (show if ANY state is loading)
+        if (state.isLoading) {
             val loadPercentage = state.tracks.data
 
             if (loadPercentage != null) {

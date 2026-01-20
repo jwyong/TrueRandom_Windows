@@ -31,6 +31,16 @@ buildkonfig {
             "SPOTIFY_CLIENT_SECRET",
             localProperties.getProperty("SPOTIFY_CLIENT_SECRET") ?: ""
         )
+        buildConfigField(
+            com.codingfeline.buildkonfig.compiler.FieldSpec.Type.STRING,
+            "SUPABASE_API_KEY",
+            localProperties.getProperty("SUPABASE_API_KEY") ?: ""
+        )
+        buildConfigField(
+            com.codingfeline.buildkonfig.compiler.FieldSpec.Type.STRING,
+            "SUPABASE_PROJECT_URL",
+            localProperties.getProperty("SUPABASE_PROJECT_URL") ?: ""
+        )
     }
 }
 
@@ -63,14 +73,17 @@ kotlin {
             implementation("androidx.datastore:datastore:1.1.1")
 
             // FOR SPOTIFY API (Replacing Android SDK)
-            implementation("io.ktor:ktor-client-core:2.3.12")
-            implementation("io.ktor:ktor-client-cio:2.3.12")
-            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+            implementation("io.ktor:ktor-client-core:3.0.1")
+            implementation("io.ktor:ktor-client-cio:3.0.1")
 
             // Loopback browser for spotify auth
-            implementation("io.ktor:ktor-server-netty:2.3.12")
-            implementation(libs.ktor.client.content.negotiation)
-            implementation(libs.ktor.serialization.kotlinx.json)
+            implementation("io.ktor:ktor-client-content-negotiation:3.0.1")
+            implementation("io.ktor:ktor-serialization-kotlinx-json:3.0.1")
+
+            implementation("io.ktor:ktor-server-netty:3.0.1")
+
+            implementation("io.github.jan-tennert.supabase:postgrest-kt:3.0.1")
+            implementation("io.github.jan-tennert.supabase:auth-kt:3.0.1")
 
             // Base ViewModel and Coroutines integration
             implementation(libs.androidx.lifecycle.viewmodel)
@@ -87,10 +100,7 @@ kotlin {
 
             implementation("org.jetbrains.compose.components:components-resources:1.6.11") // check for latest version
             implementation("org.jetbrains.compose.material:material-icons-extended:1.6.11")
-
-//            implementation("io.github.jan-tennert.supabase:postgrest-kt:3.0.1")
-//            implementation("io.github.jan-tennert.supabase:gotrue-kt:3.0.1") // Required for Auth
-        }
+            }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
         }

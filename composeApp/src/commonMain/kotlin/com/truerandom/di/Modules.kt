@@ -1,15 +1,20 @@
 package com.truerandom.di
 
-import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.truerandom.api.AuthApiRepository
 import com.truerandom.api.TrackApiRepository
+import com.truerandom.build.AppConfig
 import com.truerandom.data.DatastoreRepository
 import com.truerandom.db.AppDatabase
+import com.truerandom.db.dao.PlayCountDao
 import com.truerandom.db.dao.TrackDao
 import com.truerandom.db.getDatabaseBuilder
 import com.truerandom.db.getRoomDatabase
+import com.truerandom.db.repository.PlayCountDbRepository
+import com.truerandom.db.repository.SupabaseRepository
 import com.truerandom.db.repository.TrackDbRepository
 import com.truerandom.ui.main.MainViewModel
+import io.github.jan.supabase.createSupabaseClient
+import io.github.jan.supabase.postgrest.Postgrest
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
@@ -24,17 +29,21 @@ expect val platformModule: Module
 
 // src/commonMain/kotlin/com/truerandom/di/Modules.kt
 val appModule = module {
+    // Provide the Supabase Client
+    single {
+        createSupabaseClient(
+            supabaseUrl = AppConfig.SUPABASE_PROJECT_URL,
+            supabaseKey = AppConfig.SUPABASE_API_KEY
+        ) {
+            install(Postgrest)
+        }
+    }
+
     // Provide db instance
     single<AppDatabase> {
         val dbBuilder = getDatabaseBuilder()
-        dbBuilder
-            .setDriver(BundledSQLiteDriver()) // Important for KMP
-            .build()
         getRoomDatabase(dbBuilder)
     }
-
-    // Daos
-    single<TrackDao> { get<AppDatabase>().trackDao() }
 
     // HttpClient
     single {
@@ -52,12 +61,18 @@ val appModule = module {
         }
     }
 
+    // Daos
+    single<TrackDao> { get<AppDatabase>().trackDao() }
+    single<PlayCountDao> { get<AppDatabase>().playCountDao() }
+
     // Repositories (data, api and db)
+    single { SupabaseRepository(get()) }
     single { AuthApiRepository(get()) }
-    single { TrackApiRepository(get()) }
     single { TrackDbRepository(get()) }
+    single { PlayCountDbRepository(get()) }
+    single { TrackApiRepository(get()) }
     single { DatastoreRepository(get()) }
 
     // ViewModels
-    viewModel { MainViewModel(get(), get(),get(), get()) }
+    viewModel { MainViewModel(get(), get(), get(), get(), get(), get()) }
 }

@@ -5,6 +5,7 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.RoomDatabaseConstructor
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import com.truerandom.db.dao.PlayCountDao
 import com.truerandom.db.dao.TrackDao
 import com.truerandom.db.entity.LikedTrackEntity
 import com.truerandom.db.entity.PlayCountEntity
@@ -14,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 @ConstructedBy(AppDatabaseConstructor::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun trackDao(): TrackDao
+    abstract fun playCountDao(): PlayCountDao
 }
 
 // Room will generate the 'actual' object for you during compilation.
