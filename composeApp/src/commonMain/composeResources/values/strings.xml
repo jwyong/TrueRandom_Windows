@@ -7,7 +7,8 @@
     <string name="pause_failed">Failed to pause track (%1$s)</string>
 
     <string name="fetch_liked_tracks">Fetching liked tracks...</string>
-    <string name="fetch_liked_tracks_success">Liked tracks fetched successfully!</string>
+    <string name="fetch_liked_tracks_success">Successfully fetched %1$d liked tracks!</string>
+    <string name="sync_play_counts_success">Successfully synced play history with cloud!</string>
 
     <string name="connected_to_spotify">Connected to Spotify!</string>
     <string name="logout_success">Logged out successfully!</string>

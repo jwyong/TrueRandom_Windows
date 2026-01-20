@@ -6,14 +6,15 @@ import com.truerandom.api.AuthApiRepository
 import com.truerandom.api.TrackApiRepository
 import com.truerandom.data.DatastoreRepository
 import com.truerandom.db.entity.LikedTrackEntity
+import com.truerandom.db.entity.PlayCountEntity
+import com.truerandom.db.repository.PlayCountDbRepository
+import com.truerandom.db.repository.SupabaseRepository
 import com.truerandom.db.repository.TrackDbRepository
 import com.truerandom.model.PlayerStateResponse
 import com.truerandom.model.SpotifyErrorResponse
 import com.truerandom.model.SpotifyTokenResponse
-import com.truerandom.model.TrackDetails
 import com.truerandom.util.PlaybackManager
 import com.truerandom.util.Resource
-import io.ktor.server.application.call
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.response.respondText
@@ -37,23 +38,24 @@ import truerandomwindows.composeapp.generated.resources.fetch_liked_tracks_succe
 import truerandomwindows.composeapp.generated.resources.logout_success
 import truerandomwindows.composeapp.generated.resources.pause_failed
 import truerandomwindows.composeapp.generated.resources.play_failed
+import truerandomwindows.composeapp.generated.resources.sync_play_counts_success
 
 class MainViewModel(
+    private val supabaseRepository: SupabaseRepository,
     private val authApiRepository: AuthApiRepository,
     private val trackDbRepository: TrackDbRepository,
+    private val playCountDbRepository: PlayCountDbRepository,
     private val trackApiRepository: TrackApiRepository,
     private val datastoreRepository: DatastoreRepository
 ) : ViewModel() {
     init {
         launchSpotifyDesktop()
         startCheckAuthFlow()
+        startCheckSupabaseFlow()
     }
 
     private val _uiState = MutableStateFlow(MainScreenState())
     val uiState = _uiState.asStateFlow()
-
-    // Current track info
-    private val currentTrackDetails = MutableStateFlow<TrackDetails?>(null)
 
     /**
      * Auth related
@@ -172,6 +174,42 @@ class MainViewModel(
     }
 
     /**
+     * Supabase related
+     **/
+    // Start checking and syncing data from supabase (play_count table)
+    private fun startCheckSupabaseFlow() {
+        // Sync from cloud first (upsert to local), then sync to cloud (upsert to cloud)
+        viewModelScope.launch {
+            syncPlayCountsFromCloud()
+            syncPlayCountsToCloud()
+        }
+    }
+
+    private suspend fun syncPlayCountsFromCloud() {
+        // Get full list of play counts from supabase
+        val playCountEntities = supabaseRepository.getAllPlayCounts()
+        println("Play counts from Supabase: ${playCountEntities.size}")
+
+        // Upsert to local db
+        if (playCountEntities.isNotEmpty()) {
+            val upserted = playCountDbRepository.upsertPlayCounts(playCountEntities)
+            println("Upserted supabase play counts to local db: ${upserted.size}")
+        }
+    }
+
+    private suspend fun syncPlayCountsToCloud(): List<PlayCountEntity> {
+        // Upsert whole local db to supabase for syncing
+        val allPlayCounts = playCountDbRepository.getAllPlayCounts()
+        val upsertSupabaseResult = supabaseRepository.upsertPlayCounts(allPlayCounts)
+        println("upsertSupabaseResult = $upsertSupabaseResult")
+
+        _uiState.update { it.copy(playCounts = Resource.Success(upsertSupabaseResult.data)) }
+        showSnackbar(getString(Res.string.sync_play_counts_success))
+
+        return allPlayCounts
+    }
+
+    /**
      * Sync tracks related
      **/
     suspend fun checkAndFetchLikedSongs() {
@@ -195,11 +233,10 @@ class MainViewModel(
         println("fetchAndSyncLikedTracks")
         showSnackbar(getString(Res.string.fetch_liked_tracks))
 
-        val accessToken = getWorkingAccessToken()
-
         // Clear off db first
         trackDbRepository.deleteAllTracks()
 
+        val accessToken = getWorkingAccessToken()
         var currentOffset = 0
         var totalTracks = 1 // Placeholder to start the loop
 
@@ -236,8 +273,22 @@ class MainViewModel(
         }
 
         _uiState.update { it.copy(tracks = Resource.Success()) }
-        showSnackbar(getString(Res.string.fetch_liked_tracks_success))
-        println("Full sync complete.")
+        showSnackbar(getString(Res.string.fetch_liked_tracks_success, totalTracks))
+        println("Full sync complete, removing old trackUris from playCount table...")
+
+        // Get list of trackUris from LikedTracks and compare in playCount table
+        val likedTrackUris = trackDbRepository.getAllTrackUris()
+        val unlikedTrackUris = playCountDbRepository.getOrphanedPlayCountUris(likedTrackUris)
+        println("Unliked trackUris: ${unlikedTrackUris.size}")
+
+        val deletedPlayCount = playCountDbRepository.deletePlayCountsNotInList(likedTrackUris)
+
+        println("Deleted $deletedPlayCount playCount rows from local playCount table.")
+
+        // Then sync local db to cloud + cleanup old items on cloud
+        supabaseRepository.deletePlayCountsFromCloud(unlikedTrackUris)
+
+        println("Deleted ${unlikedTrackUris.size} playCount rows from cloud playCount table.")
     }
 
     // Listen to browser auth done callback (loopback)
@@ -333,8 +384,17 @@ class MainViewModel(
         if (shouldIncrementCount) {
             coroutineScope {
                 launch {
-                    _uiState.value.currentTrackDetails?.trackUri?.let { currentTrackUri ->
-                        trackDbRepository.incrementPlayCount(currentTrackUri)
+                    val currentTrackUri =
+                        _uiState.value.currentTrackDetails?.trackUri ?: return@launch
+                    val incrementedPlayCount =
+                        playCountDbRepository.incrementPlayCount(currentTrackUri)
+
+                    println("Incremented playCount for $incrementedPlayCount")
+
+                    // Sync the incremented playCount to cloud
+                    if (incrementedPlayCount != null) {
+                        supabaseRepository.upsertPlayCount(incrementedPlayCount)
+                        println("Synced incremented playCount to cloud")
                     }
                 }
             }
@@ -410,7 +470,10 @@ class MainViewModel(
     }
 
     // Check playerState of trackUri and do trackEnd actions accordingly
-    private suspend fun checkPlayerState(trackUri: String, isFirstCheck: Boolean): PlayerStateResponse? {
+    private suspend fun checkPlayerState(
+        trackUri: String,
+        isFirstCheck: Boolean
+    ): PlayerStateResponse? {
         var accessToken = getWorkingAccessToken()
         val state = trackApiRepository.getPlayerState(accessToken)
         println("Player state: $state")
@@ -441,9 +504,10 @@ class MainViewModel(
 
                 if (remaining <= 5000) {
                     // Near end - just delay then play next random
-                    println("Near end - playing next track...")
+                    val delayWithBuffer = remaining + 1000
+                    println("Near end - playing next track after $delayWithBuffer ms")
 
-                    delay(remaining + 1000)
+                    delay(delayWithBuffer)
                     incrementAndPlayNextRandom(accessToken)
 
                 } else {
@@ -461,6 +525,8 @@ class MainViewModel(
 
     // Increment current track and play next random (at track End)
     private suspend fun incrementAndPlayNextRandom(accessToken: String) {
+        println("getting next random track to play...")
+
         val playResult = playNextRandomTrack(accessToken, true)
         println("Play result after delay: ${playResult.isSuccess}")
 

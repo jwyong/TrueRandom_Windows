@@ -4,13 +4,12 @@ import com.truerandom.db.dao.TrackDao
 import com.truerandom.db.entity.LikedTrackEntity
 
 class TrackDbRepository(private val trackDao: TrackDao) {
+    suspend fun getAllTrackUris() = trackDao.getAllTrackUris()
     suspend fun getLikedTracksCount() = trackDao.getTrackCount()
     suspend fun getLeastPlayedTrackUris() = trackDao.getLeastPlayedTrackUris()
     suspend fun getTrackDetailsByUri(uri: String) = trackDao.getTrackDetailsByUri(uri)
 
     suspend fun insertTracks(tracks: List<LikedTrackEntity>) = trackDao.insertAll(tracks)
-
-    suspend fun incrementPlayCount(trackUri: String) = trackDao.incrementPlayCount(trackUri)
 
     suspend fun deleteAllTracks() = trackDao.deleteAllTracks()
 
