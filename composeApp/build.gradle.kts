@@ -131,7 +131,7 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             modules("jdk.unsupported", "jdk.unsupported.desktop")
             packageName = "com.truerandom"
-            packageVersion = "1.0.7"
+            packageVersion = "1.0.8"
         }
     }
 }

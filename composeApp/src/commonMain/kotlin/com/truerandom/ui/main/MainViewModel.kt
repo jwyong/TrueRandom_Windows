@@ -504,9 +504,10 @@ class MainViewModel(
 
                 if (remaining <= 5000) {
                     // Near end - just delay then play next random
-                    println("Near end - playing next track...")
+                    val delayWithBuffer = remaining + 1000
+                    println("Near end - playing next track after $delayWithBuffer ms")
 
-                    delay(remaining + 1000)
+                    delay(delayWithBuffer)
                     incrementAndPlayNextRandom(accessToken)
 
                 } else {
@@ -524,6 +525,8 @@ class MainViewModel(
 
     // Increment current track and play next random (at track End)
     private suspend fun incrementAndPlayNextRandom(accessToken: String) {
+        println("getting next random track to play...")
+
         val playResult = playNextRandomTrack(accessToken, true)
         println("Play result after delay: ${playResult.isSuccess}")
 
