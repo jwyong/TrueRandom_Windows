@@ -1,6 +1,7 @@
 package com.truerandom
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -11,11 +12,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
@@ -33,8 +36,10 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -44,6 +49,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import com.truerandom.model.LikedTrackWithCount
+import com.truerandom.ui.common.ConfirmationDialog
+import com.truerandom.ui.common.DialogEvent
 import com.truerandom.ui.main.MainScreenState
 import com.truerandom.ui.main.MainViewModel
 import kotlinx.coroutines.launch
@@ -52,29 +59,45 @@ import my.nanihadesuka.compose.ScrollbarSettings
 import org.jetbrains.compose.resources.stringResource
 import truerandomwindows.composeapp.generated.resources.Res
 import truerandomwindows.composeapp.generated.resources.app_name
+import truerandomwindows.composeapp.generated.resources.logout
 import truerandomwindows.composeapp.generated.resources.no_track_playing
+import truerandomwindows.composeapp.generated.resources.re_sync
+import truerandomwindows.composeapp.generated.resources.reset_play_counts_title
 import truerandomwindows.composeapp.generated.resources.unknown_track
 
 @Composable
 @Preview
-fun App(mainViewModel: MainViewModel, appVersion: String) {
+fun App(mainViewModel: MainViewModel, appVersionName: String, appVersionCode: String) {
     val state by mainViewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    var confirmDialogState by remember { mutableStateOf(DialogEvent(false)) }
 
     val pagedTracks = mainViewModel.pagedLikedTracks.collectAsLazyPagingItems()
     val pagedListState = rememberLazyListState()
 
     LaunchedEffect(Unit) {
-        mainViewModel.events.collect { message ->
-            snackbarHostState.showSnackbar(message)
+        launch {
+            mainViewModel.showSnackBarEvent.collect { message ->
+                snackbarHostState.showSnackbar(message)
+            }
+        }
+
+        launch {
+            mainViewModel.showConfirmDialogEvent.collect { event ->
+                println("show confirm dialog event = $event")
+                confirmDialogState = event
+            }
         }
     }
 
     MaterialTheme {
         Scaffold(
             snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
-            topBar = { TopBar(state) },
-            bottomBar = { PlayerBottomBar(mainViewModel, state, appVersion) }
+            topBar = { TopBar(mainViewModel, state) },
+            bottomBar = {
+                val versionString = "v$appVersionName($appVersionCode)"
+                PlayerBottomBar(mainViewModel, state, versionString)
+            }
         ) { paddingValues ->
             // Liked tracks paged list
             LazyColumnScrollbar(
@@ -103,12 +126,31 @@ fun App(mainViewModel: MainViewModel, appVersion: String) {
                 }
             }
         }
+
+        // 2-btn confirmation dialog
+        val showDialog = confirmDialogState.showDialog
+
+        ConfirmationDialog(
+            DialogEvent(
+                showDialog = showDialog,
+                title = confirmDialogState.title,
+                desc = confirmDialogState.desc,
+                confirmLabel = confirmDialogState.confirmLabel,
+                onConfirm = confirmDialogState.onConfirm,
+                dismissLabel = confirmDialogState.dismissLabel,
+                onDismiss = confirmDialogState.onDismiss
+            )
+        )
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TopBar(state: MainScreenState) {
+fun TopBar(mainViewModel: MainViewModel, state: MainScreenState) {
+    val scope = rememberCoroutineScope()
+
+    var menuExpanded by remember { mutableStateOf(false) }
+
     Column {
         TopAppBar(
             title = {
@@ -116,6 +158,50 @@ fun TopBar(state: MainScreenState) {
                     text = stringResource(Res.string.app_name),
                     style = MaterialTheme.typography.titleLarge
                 )
+            },
+
+            // Dropdown actions (re-sync, logout, etc)
+            actions = {
+                Box {
+                    IconButton(onClick = { menuExpanded = true }) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = "More options"
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false }
+                    ) {
+                        // Re-sync liked tracks
+                        DropdownMenuItem(
+                            text = { Text(stringResource(Res.string.re_sync)) },
+                            onClick = {
+                                menuExpanded = false
+                                scope.launch { mainViewModel.fetchAndSyncLikedTracks() }
+                            }
+                        )
+
+                        // Reset play count
+                        DropdownMenuItem(
+                            text = { Text(stringResource(Res.string.reset_play_counts_title)) },
+                            onClick = {
+                                menuExpanded = false
+                                mainViewModel.resetPlayCountOnClick()
+                            }
+                        )
+
+                        // Logout
+                        DropdownMenuItem(
+                            text = { Text(stringResource(Res.string.logout)) },
+                            onClick = {
+                                menuExpanded = false
+                                scope.launch { mainViewModel.logoutBtnOnClick() }
+                            }
+                        )
+                    }
+                }
             },
             colors = TopAppBarDefaults.topAppBarColors(
                 containerColor = MaterialTheme.colorScheme.surface,
@@ -142,14 +228,12 @@ fun TopBar(state: MainScreenState) {
 }
 
 @Composable
-fun PlayerBottomBar(mainViewModel: MainViewModel, state: MainScreenState, appVersion: String) {
+fun PlayerBottomBar(mainViewModel: MainViewModel, state: MainScreenState, versionString: String) {
     Surface(
         tonalElevation = 8.dp, // Separation from the list
         shadowElevation = 4.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
-        val scope = rememberCoroutineScope()
-
         Column(
             modifier = Modifier
                 .padding(vertical = 12.dp, horizontal = 16.dp)
@@ -180,11 +264,17 @@ fun PlayerBottomBar(mainViewModel: MainViewModel, state: MainScreenState, appVer
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(24.dp) // Space between icons
             ) {
-                // Logout
-                IconButton(onClick = {
-                    mainViewModel.logoutBtnOnClick()
-                }) {
-                    Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Logout")
+                // Previous btn
+                FilledTonalIconButton(
+                    onClick = {
+                        // TODO: JAY_LOG - Previous btn function (full list of previous tracks??)
+                    },
+                    modifier = Modifier.size(48.dp) // Slightly smaller than the 56.dp Play/Pause button helps hierarchy
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.SkipPrevious,
+                        contentDescription = "Previous"
+                    )
                 }
 
                 // Play/Pause usually looks better slightly larger
@@ -212,20 +302,11 @@ fun PlayerBottomBar(mainViewModel: MainViewModel, state: MainScreenState, appVer
                         contentDescription = "Next"
                     )
                 }
-
-                // Resync liked tracks
-                IconButton(onClick = {
-                    scope.launch {
-                        mainViewModel.fetchAndSyncLikedTracks()
-                    }
-                }) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Resync")
-                }
             }
 
             // Btm part: version
             Text(
-                text = "TrueRandom v$appVersion",
+                text = "TrueRandom $versionString",
                 style = MaterialTheme.typography.labelSmall,
             )
         }

@@ -10,9 +10,20 @@
     <string name="fetch_liked_tracks_success">Successfully fetched %1$d liked tracks!</string>
     <string name="sync_play_counts_success">Successfully synced play history with cloud!</string>
 
+    <string name="reset_play_counts_title">Reset play counts</string>
+    <string name="reset_play_counts_confirm">Are you sure you want to reset ALL play counts on this device and cloud?\n\nThis action cannot be undone.</string>
+    <string name="reset_play_counts_success">Successfully reset play counts on device and cloud!</string>
+    <string name="reset">Reset</string>
+    <string name="ok">Cancel</string>
+    <string name="cancel">Cancel</string>
+
     <string name="connected_to_spotify">Connected to Spotify!</string>
     <string name="logout_success">Logged out successfully!</string>
 
     <string name="no_track_playing">No track playing</string>
     <string name="unknown_track">Unknown track</string>
+
+    <string name="re-sync">Re-sync</string>
+    <string name="logout">Logout</string>
+
 </resources>

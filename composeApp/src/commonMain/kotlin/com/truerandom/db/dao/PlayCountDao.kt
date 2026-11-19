@@ -33,6 +33,10 @@ interface PlayCountDao {
     @Query("DELETE FROM play_count WHERE trackUri NOT IN (:likedUris)")
     suspend fun deletePlayCountsNotInList(likedUris: List<String>): Int
 
+    // Clear all play counts
+    @Query("DELETE FROM play_count")
+    suspend fun deleteAllPlayCounts(): Int
+
     @Query("SELECT * FROM play_count WHERE trackUri = :trackUri")
     suspend fun getPlayCountByUri(trackUri: String): PlayCountEntity?
 

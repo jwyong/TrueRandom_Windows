@@ -1,4 +1,6 @@
 [versions]
+agp = "8.7.3"
+androidx-activity-compose = "1.9.3"
 androidx-lifecycle = "2.9.6"
 composeHotReload = "1.0.0"
 composeMultiplatform = "1.10.0"
@@ -14,6 +16,7 @@ paging = "3.4.0"
 lazycolumn-scrollbar = "3.0.0"
 
 [libraries]
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity-compose" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 kotlin-testJunit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
 junit = { module = "junit:junit", version.ref = "junit" }
@@ -29,6 +32,7 @@ androidx-room-runtime = { group = "androidx.room", name = "room-runtime", versio
 
 # The core engine for all platforms
 koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }
+koin-android = { module = "io.insert-koin:koin-android", version.ref = "koin" }
 # Compose integration (provides KoinApplication, koinViewModel, etc.)
 koin-compose = { module = "io.insert-koin:koin-compose", version.ref = "koin-compose" }
 # Specific ViewModel support for Compose Multiplatform
@@ -41,6 +45,7 @@ room-paging = { module = "androidx.room:room-paging", version.ref = "room" }
 lazycolumn-scrollbar = { module = "com.github.nanihadesuka.LazyColumnScrollbar:lazycolumnscrollbar", version.ref = "lazycolumn-scrollbar" }
 
 [plugins]
+androidApplication = { id = "com.android.application", version.ref = "agp" }
 composeHotReload = { id = "org.jetbrains.compose.hot-reload", version.ref = "composeHotReload" }
 composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
 composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

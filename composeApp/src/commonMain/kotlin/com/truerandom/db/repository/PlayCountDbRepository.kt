@@ -9,4 +9,6 @@ class PlayCountDbRepository(private val playCountDao: PlayCountDao) {
     suspend fun upsertPlayCounts(playCounts: List<PlayCountEntity>) = playCountDao.upsertAll(playCounts)
     suspend fun incrementPlayCount(trackUri: String) = playCountDao.incrementPlayCount(trackUri)
     suspend fun deletePlayCountsNotInList(likedUris: List<String>) = playCountDao.deletePlayCountsNotInList(likedUris)
+
+    suspend fun deleteAllPlayCounts() = playCountDao.deleteAllPlayCounts()
 }

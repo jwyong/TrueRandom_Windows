@@ -18,6 +18,7 @@ import com.truerandom.model.LikedTrackWithCount
 import com.truerandom.model.PlayerStateResponse
 import com.truerandom.model.SpotifyErrorResponse
 import com.truerandom.model.SpotifyTokenResponse
+import com.truerandom.ui.common.DialogEvent
 import com.truerandom.util.PlaybackManager
 import com.truerandom.util.Resource
 import io.ktor.server.engine.embeddedServer
@@ -43,6 +44,10 @@ import truerandomwindows.composeapp.generated.resources.fetch_liked_tracks_succe
 import truerandomwindows.composeapp.generated.resources.logout_success
 import truerandomwindows.composeapp.generated.resources.pause_failed
 import truerandomwindows.composeapp.generated.resources.play_failed
+import truerandomwindows.composeapp.generated.resources.reset
+import truerandomwindows.composeapp.generated.resources.reset_play_counts_confirm
+import truerandomwindows.composeapp.generated.resources.reset_play_counts_success
+import truerandomwindows.composeapp.generated.resources.reset_play_counts_title
 import truerandomwindows.composeapp.generated.resources.sync_play_counts_success
 
 class MainViewModel(
@@ -225,6 +230,39 @@ class MainViewModel(
         return allPlayCounts
     }
 
+    // Show reset play count confirmation dialog
+    fun resetPlayCountOnClick() {
+        println("resetPlayCountOnClick")
+        showConfirmDialog(
+            DialogEvent(
+                showDialog = true,
+                title = Res.string.reset_play_counts_title,
+                desc = Res.string.reset_play_counts_confirm,
+                confirmLabel = Res.string.reset,
+                onConfirm = ::resetPlayCount,
+                onDismiss = { showConfirmDialog(DialogEvent(false)) }
+            )
+        )
+    }
+
+    // Clear play count from device and cloud
+    private fun resetPlayCount() {
+        viewModelScope.launch {
+            // CLear DB play count
+            playCountDbRepository.deleteAllPlayCounts()
+
+            // Clear supabase play count
+            val result = supabaseRepository.deleteAllPlayCountsFromCloud()
+            println("Delete from supabase result = ${result.data}")
+
+            // Show snackbar
+            showSnackbar(getString(Res.string.reset_play_counts_success))
+
+            // Dismiss dialog
+            showConfirmDialog(DialogEvent(false))
+        }
+    }
+
     /**
      * Sync tracks related
      **/
@@ -365,7 +403,7 @@ class MainViewModel(
                 val playResult = _uiState.value.currentTrackDetails?.trackUri?.let { trackUri ->
                     resumeTrack(accessToken, trackUri)
                     // Has trackUri - just resume
-                }?: run {
+                } ?: run {
                     // No trackUri - play new track
                     playNextRandomTrack(accessToken, false)
                 }
@@ -615,12 +653,22 @@ class MainViewModel(
     /**
      * Snackbar
      **/
-    private val _events = Channel<String>()
-    val events = _events.receiveAsFlow()
+    private val _showSnackBarEvent = Channel<String>()
+    val showSnackBarEvent = _showSnackBarEvent.receiveAsFlow()
+
+    private val _showConfirmDialogEvent = Channel<DialogEvent>()
+    val showConfirmDialogEvent = _showConfirmDialogEvent.receiveAsFlow()
 
     fun showSnackbar(message: String) {
         viewModelScope.launch {
-            _events.send(message)
+            _showSnackBarEvent.send(message)
+        }
+    }
+
+    fun showConfirmDialog(dialogEvent: DialogEvent) {
+        viewModelScope.launch {
+            println("showConfirmDialog, dialogEvent = $dialogEvent")
+            _showConfirmDialogEvent.send(dialogEvent)
         }
     }
 }

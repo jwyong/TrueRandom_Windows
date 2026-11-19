@@ -1,8 +1,9 @@
 package com.truerandom.api
 
-import com.truerandom.build.AppConfig
+import com.truerandom.AppConfig
 import com.truerandom.model.SpotifyTokenResponse
 import com.truerandom.util.Resource
+import com.truerandom.util.openUrlInBrowser
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.forms.FormDataContent
@@ -12,8 +13,6 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.Parameters
 import io.ktor.http.contentType
-import java.awt.Desktop
-import java.net.URI
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
@@ -55,9 +54,7 @@ class AuthApiRepository(private val client: HttpClient) {
                 "&code_challenge_method=S256" +
                 "&code_challenge=$challenge"
 
-        if (Desktop.isDesktopSupported()) {
-            Desktop.getDesktop().browse(URI(authUrl))
-        }
+        openUrlInBrowser(authUrl)
     }
 
     /**

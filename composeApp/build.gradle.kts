@@ -1,7 +1,12 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import java.util.Properties
 
+val appPackageName = "com.truerandom"
+val appVersionName = "1.0.11"
+val appVersionCode = 11 // Android still requires a separate integer versionCode
+
 plugins {
+    alias(libs.plugins.androidApplication)
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
@@ -17,7 +22,7 @@ val localProperties = Properties().apply {
 }
 
 buildkonfig {
-    packageName = "com.truerandom.build" // This is where the generated class will live
+    packageName = appPackageName // This is where the generated class will live
     objectName = "AppConfig" // The name of the generated object (default is BuildKonfig)
 
     defaultConfigs {
@@ -49,10 +54,9 @@ room {
 }
 
 val generateDesktopBuildInfo by tasks.registering {
-    val packageVersionValue = compose.desktop.application.nativeDistributions.packageVersion
     val outputDir = layout.buildDirectory.dir("generated/desktopBuildInfo/kotlin")
 
-    inputs.property("packageVersion", packageVersionValue)
+    inputs.property("packageVersion", appVersionName)
     outputs.dir(outputDir)
 
     doLast {
@@ -63,7 +67,8 @@ val generateDesktopBuildInfo by tasks.registering {
             package com.truerandom
 
             internal object DesktopBuildInfo {
-                const val PACKAGE_VERSION: String = "$packageVersionValue"
+                const val VERSION_NAME: String = "$appVersionName"
+                const val VERSION_CODE: String = "$appVersionCode"
             }
             """.trimIndent()
         )
@@ -75,10 +80,13 @@ tasks.matching { it.name == "compileKotlinJvm" }.configureEach {
 }
 
 kotlin {
+    jvmToolchain(17)
+
     compilerOptions {
         freeCompilerArgs.add("-Xskip-metadata-version-check")
     }
 
+    androidTarget()
     jvm()
     
     sourceSets {
@@ -140,6 +148,12 @@ kotlin {
         commonTest.dependencies {
             implementation(libs.kotlin.test)
         }
+        val androidMain by getting {
+            dependencies {
+                implementation(libs.androidx.activity.compose)
+                implementation(libs.koin.android)
+            }
+        }
         val jvmMain by getting {
             // Add the KSP generated directory to the JVM source set
             kotlin.srcDir("build/generated/ksp/jvm/jvmMain/kotlin")
@@ -152,8 +166,39 @@ kotlin {
     }
 }
 
+android {
+    namespace = "com.truerandom"
+    compileSdk = 35
+
+    defaultConfig {
+        applicationId = "com.truerandom"
+        minSdk = 24
+        targetSdk = 35
+        versionCode = appVersionCode
+        versionName = appVersionName
+
+        buildConfigField("String", "PACKAGE_NAME", "\"$appPackageName\"")
+        buildConfigField("String", "VERSION_NAME", "\"$appVersionName\"")
+        buildConfigField("String", "VERSION_CODE", "\"$appVersionCode\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+tasks.matching { it.name.contains("AarMetadata") }.configureEach {
+    enabled = false
+}
+
 dependencies {
     add("kspJvm", libs.androidx.room.compiler)
+    add("kspAndroid", libs.androidx.room.compiler)
 }
 
 ksp {
@@ -173,8 +218,8 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             modules("jdk.unsupported", "jdk.unsupported.desktop")
-            packageName = "com.truerandom"
-            packageVersion = "1.0.9"
+            packageName = appPackageName
+            packageVersion = appVersionName
 
             windows {
                 // Generate once (e.g., via UUID.randomUUID() or a GUID generator) and keep it constant
@@ -188,8 +233,8 @@ compose.desktop {
         // 1. Pass directly to `./gradlew run` (and Android Studio Desktop run config)
         tasks.withType<JavaExec>().configureEach {
             if (name == "run") {
-                val version = nativeDistributions.packageVersion.toString()
-                systemProperty("app.version", version)
+                systemProperty("app.versionName", appVersionName)
+                systemProperty("app.versionCode", appVersionCode)
             }
         }
     }

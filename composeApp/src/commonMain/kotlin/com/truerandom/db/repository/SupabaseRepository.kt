@@ -8,6 +8,7 @@ import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.filter.FilterOperator
 
 private const val PLAY_COUNT_TABLE = "play_count"
+
 class SupabaseRepository(private val client: SupabaseClient) {
     /**
      * Fetches all records from the 'play_count' table.
@@ -58,6 +59,14 @@ class SupabaseRepository(private val client: SupabaseClient) {
                 // Raw filter: column name, operator, and the formatted string
                 filter("trackUri", FilterOperator.IN, formattedList)
             }
+        }
+    }
+
+    // Delete ALL items in play count db
+    suspend fun deleteAllPlayCountsFromCloud() = client.from(PLAY_COUNT_TABLE).delete {
+        filter {
+            // Matches all rows where trackUri is not empty
+            neq("trackUri", "")
         }
     }
 

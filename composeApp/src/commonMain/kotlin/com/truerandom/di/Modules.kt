@@ -1,8 +1,8 @@
 package com.truerandom.di
 
+import com.truerandom.AppConfig
 import com.truerandom.api.AuthApiRepository
 import com.truerandom.api.TrackApiRepository
-import com.truerandom.build.AppConfig
 import com.truerandom.data.DatastoreRepository
 import com.truerandom.db.AppDatabase
 import com.truerandom.db.dao.PlayCountDao
