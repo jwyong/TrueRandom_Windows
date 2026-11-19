@@ -48,7 +48,37 @@ room {
     schemaDirectory("$projectDir/schemas")
 }
 
+val generateDesktopBuildInfo by tasks.registering {
+    val packageVersionValue = compose.desktop.application.nativeDistributions.packageVersion
+    val outputDir = layout.buildDirectory.dir("generated/desktopBuildInfo/kotlin")
+
+    inputs.property("packageVersion", packageVersionValue)
+    outputs.dir(outputDir)
+
+    doLast {
+        val outFile = outputDir.get().file("com/truerandom/DesktopBuildInfo.kt").asFile
+        outFile.parentFile.mkdirs()
+        outFile.writeText(
+            """
+            package com.truerandom
+
+            internal object DesktopBuildInfo {
+                const val PACKAGE_VERSION: String = "$packageVersionValue"
+            }
+            """.trimIndent()
+        )
+    }
+}
+
+tasks.matching { it.name == "compileKotlinJvm" }.configureEach {
+    dependsOn(generateDesktopBuildInfo)
+}
+
 kotlin {
+    compilerOptions {
+        freeCompilerArgs.add("-Xskip-metadata-version-check")
+    }
+
     jvm()
     
     sourceSets {
@@ -71,6 +101,12 @@ kotlin {
             // Datastore
             implementation("androidx.datastore:datastore-preferences:1.1.1")
             implementation("androidx.datastore:datastore:1.1.1")
+
+            // Paging
+            implementation(libs.paging.common)
+            implementation(libs.paging.compose)
+            implementation(libs.room.paging)
+            implementation(libs.lazycolumn.scrollbar)
 
             // FOR SPOTIFY API (Replacing Android SDK)
             implementation("io.ktor:ktor-client-core:3.0.1")
@@ -104,13 +140,14 @@ kotlin {
         commonTest.dependencies {
             implementation(libs.kotlin.test)
         }
-        jvmMain.dependencies {
-            implementation(compose.desktop.currentOs)
-            implementation(libs.kotlinx.coroutinesSwing)
-        }
         val jvmMain by getting {
             // Add the KSP generated directory to the JVM source set
             kotlin.srcDir("build/generated/ksp/jvm/jvmMain/kotlin")
+            kotlin.srcDir(generateDesktopBuildInfo)
+        }
+        jvmMain.dependencies {
+            implementation(compose.desktop.currentOs)
+            implementation(libs.kotlinx.coroutinesSwing)
         }
     }
 }
@@ -127,11 +164,33 @@ compose.desktop {
     application {
         mainClass = "com.truerandom.MainKt"
 
+        buildTypes.release {
+            proguard {
+                isEnabled.set(false)
+            }
+        }
+
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             modules("jdk.unsupported", "jdk.unsupported.desktop")
             packageName = "com.truerandom"
-            packageVersion = "1.0.8"
+            packageVersion = "1.0.9"
+
+            windows {
+                // Generate once (e.g., via UUID.randomUUID() or a GUID generator) and keep it constant
+                upgradeUuid = "8f4b2c1a-7d3e-4b9a-9c2f-1e6d5a4b3c2d"
+                // Keep perUserInstall consistent with how you installed the previous version
+                perUserInstall = true
+                shortcut = true
+            }
+        }
+
+        // 1. Pass directly to `./gradlew run` (and Android Studio Desktop run config)
+        tasks.withType<JavaExec>().configureEach {
+            if (name == "run") {
+                val version = nativeDistributions.packageVersion.toString()
+                systemProperty("app.version", version)
+            }
         }
     }
 }

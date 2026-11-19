@@ -9,13 +9,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -38,9 +41,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemKey
+import com.truerandom.model.LikedTrackWithCount
 import com.truerandom.ui.main.MainScreenState
 import com.truerandom.ui.main.MainViewModel
 import kotlinx.coroutines.launch
+import my.nanihadesuka.compose.LazyColumnScrollbar
+import my.nanihadesuka.compose.ScrollbarSettings
 import org.jetbrains.compose.resources.stringResource
 import truerandomwindows.composeapp.generated.resources.Res
 import truerandomwindows.composeapp.generated.resources.app_name
@@ -49,9 +57,12 @@ import truerandomwindows.composeapp.generated.resources.unknown_track
 
 @Composable
 @Preview
-fun App(mainViewModel: MainViewModel) {
+fun App(mainViewModel: MainViewModel, appVersion: String) {
     val state by mainViewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    val pagedTracks = mainViewModel.pagedLikedTracks.collectAsLazyPagingItems()
+    val pagedListState = rememberLazyListState()
 
     LaunchedEffect(Unit) {
         mainViewModel.events.collect { message ->
@@ -63,19 +74,33 @@ fun App(mainViewModel: MainViewModel) {
         Scaffold(
             snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
             topBar = { TopBar(state) },
-            bottomBar = { PlayerBottomBar(mainViewModel, state) }
+            bottomBar = { PlayerBottomBar(mainViewModel, state, appVersion) }
         ) { paddingValues ->
             // Liked tracks paged list
-            LazyColumn(
+            LazyColumnScrollbar(
+                state = pagedListState,
+                settings = ScrollbarSettings.Default,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(paddingValues), // Important: respects topBar/bottomBar height
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(paddingValues),
             ) {
-//                items(state.tracks) { track ->
-//                    TrackRow(track)
-//                }
+                LazyColumn(
+                    state = pagedListState,
+                    modifier = Modifier
+                        .fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(
+                        count = pagedTracks.itemCount,
+                        key = pagedTracks.itemKey { it.trackUri }
+                    ) { index ->
+                        val track = pagedTracks[index]
+                        if (track != null) {
+                            TrackRow(track = track)
+                        }
+                    }
+                }
             }
         }
     }
@@ -117,7 +142,7 @@ fun TopBar(state: MainScreenState) {
 }
 
 @Composable
-fun PlayerBottomBar(mainViewModel: MainViewModel, state: MainScreenState) {
+fun PlayerBottomBar(mainViewModel: MainViewModel, state: MainScreenState, appVersion: String) {
     Surface(
         tonalElevation = 8.dp, // Separation from the list
         shadowElevation = 4.dp,
@@ -134,7 +159,7 @@ fun PlayerBottomBar(mainViewModel: MainViewModel, state: MainScreenState) {
         ) {
             // Top Part: Artist - Track
             Text(
-                text = with (state.currentTrackDetails) {
+                text = with(state.currentTrackDetails) {
                     if (this != null) {
                         "[$playCount] $artistName — $trackName"
                     } else {
@@ -150,16 +175,16 @@ fun PlayerBottomBar(mainViewModel: MainViewModel, state: MainScreenState) {
                 overflow = TextOverflow.Ellipsis
             )
 
-            // Bottom Part: Row of 3 Buttons
+            // Mid Part: Row of 3 Buttons
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(24.dp) // Space between icons
             ) {
-                // TODO: JAY_LOG - use as logout for now
+                // Logout
                 IconButton(onClick = {
                     mainViewModel.logoutBtnOnClick()
                 }) {
-                    Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Previous")
+                    Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Logout")
                 }
 
                 // Play/Pause usually looks better slightly larger
@@ -175,15 +200,70 @@ fun PlayerBottomBar(mainViewModel: MainViewModel, state: MainScreenState) {
                     )
                 }
 
-                // TODO: JAY_LOG - use as resync for now
+                // Next - just play next random track
+                FilledTonalIconButton(
+                    onClick = {
+                        mainViewModel.nextBtnOnClick()
+                    },
+                    modifier = Modifier.size(48.dp) // Slightly smaller than the 56.dp Play/Pause button helps hierarchy
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.SkipNext,
+                        contentDescription = "Next"
+                    )
+                }
+
+                // Resync liked tracks
                 IconButton(onClick = {
                     scope.launch {
                         mainViewModel.fetchAndSyncLikedTracks()
                     }
                 }) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Next")
+                    Icon(Icons.Default.Refresh, contentDescription = "Resync")
                 }
             }
+
+            // Btm part: version
+            Text(
+                text = "TrueRandom v$appVersion",
+                style = MaterialTheme.typography.labelSmall,
+            )
         }
+    }
+}
+
+// Paged tracks list
+@Composable
+private fun TrackRow(track: LikedTrackWithCount) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 12.dp)
+        ) {
+            Text(
+                text = track.trackName ?: "-",
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = track.artistName ?: "-",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Text(
+            text = "${track.playCount}",
+            style = MaterialTheme.typography.labelLarge
+        )
     }
 }
