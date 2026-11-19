@@ -6,6 +6,6 @@ plugins {
     alias(libs.plugins.composeCompiler) apply false
     alias(libs.plugins.kotlinMultiplatform) apply false
     alias(libs.plugins.ksp) apply false
-    kotlin("plugin.serialization") version "2.1.0" apply false
+    kotlin("plugin.serialization") version "2.1.10" apply false
     id("com.codingfeline.buildkonfig") version "0.15.1" apply false
 }

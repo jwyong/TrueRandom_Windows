@@ -1,10 +1,12 @@
 package com.truerandom.db.dao
 
+import androidx.paging.PagingSource
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.truerandom.db.entity.LikedTrackEntity
+import com.truerandom.model.LikedTrackWithCount
 import com.truerandom.model.TrackDetails
 
 /**
@@ -75,22 +77,22 @@ interface TrackDao {
     )
     suspend fun getTrackDetailsByUri(uri: String): TrackDetails?
 
-//    /**
-//     * Get a paged list of liked tracks along with play count, to be displayed on main page liked
-//     * tracks (paged)
-//     **/
-//    @Query("""
-//        SELECT
-//            lt.trackUri,
-//            lt.trackName,
-//            lt.artistName,
-//            lt.albumCoverUrl,
-//            lt.isLocal,
-//            lt.addedAt,
-//            COALESCE(pc.playCount, 0) AS playCount
-//        FROM liked_tracks lt
-//        LEFT JOIN play_count pc ON lt.trackUri = pc.trackUri
-//        ORDER BY lt.addedAt DESC
-//    """)
-//    fun getPagedLikedTracks(): PagingSource<Int, LikedTrackWithCount>
+    /**
+     * Get a paged list of liked tracks along with play count, to be displayed on main page liked
+     * tracks (paged)
+     **/
+    @Query("""
+        SELECT
+            lt.trackUri,
+            lt.trackName,
+            lt.artistName,
+            lt.albumCoverUrl,
+            lt.isLocal,
+            lt.addedAt,
+            COALESCE(pc.playCount, 0) AS playCount
+        FROM liked_tracks lt
+        LEFT JOIN play_count pc ON lt.trackUri = pc.trackUri
+        ORDER BY lt.addedAt DESC
+    """)
+    fun getPagedLikedTracks(): PagingSource<Int, LikedTrackWithCount>
 }

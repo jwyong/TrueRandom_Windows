@@ -64,7 +64,7 @@ fun main() {
 
         if (isVisible) {
             Window(onCloseRequest = { isVisible = false }, title = "TrueRandom") {
-                App(mainViewModel)
+                App(mainViewModel = mainViewModel, appVersion = DesktopBuildInfo.PACKAGE_VERSION)
             }
         }
 

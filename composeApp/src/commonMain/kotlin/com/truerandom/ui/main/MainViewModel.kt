@@ -2,6 +2,10 @@ package com.truerandom.ui.main
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
 import com.truerandom.api.AuthApiRepository
 import com.truerandom.api.TrackApiRepository
 import com.truerandom.data.DatastoreRepository
@@ -10,6 +14,7 @@ import com.truerandom.db.entity.PlayCountEntity
 import com.truerandom.db.repository.PlayCountDbRepository
 import com.truerandom.db.repository.SupabaseRepository
 import com.truerandom.db.repository.TrackDbRepository
+import com.truerandom.model.LikedTrackWithCount
 import com.truerandom.model.PlayerStateResponse
 import com.truerandom.model.SpotifyErrorResponse
 import com.truerandom.model.SpotifyTokenResponse
@@ -20,10 +25,10 @@ import io.ktor.server.netty.Netty
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -56,6 +61,17 @@ class MainViewModel(
 
     private val _uiState = MutableStateFlow(MainScreenState())
     val uiState = _uiState.asStateFlow()
+
+    // Paged tracks list
+    val pagedLikedTracks: Flow<PagingData<LikedTrackWithCount>> = Pager(
+        config = PagingConfig(
+            pageSize = 30,
+            prefetchDistance = 10,
+            initialLoadSize = 60,
+            enablePlaceholders = false
+        ),
+        pagingSourceFactory = { trackDbRepository.getPagedLikedTracks() }
+    ).flow.cachedIn(viewModelScope)
 
     /**
      * Auth related
@@ -322,16 +338,6 @@ class MainViewModel(
         viewModelScope.launch {
             val accessToken = getWorkingAccessToken()
 
-            // Small delay for spotify app to launch and connect properly
-//            delay(5000)
-//            val activeDeviceId = trackApiRepository.getActiveDeviceId(accessToken)
-//            println("Active device ID: $activeDeviceId")
-//
-//            if (activeDeviceId.isNullOrBlank()) {
-//                println("No active device found")
-//                showSnackbar(getString(Res.string.no_device_found))
-//            }
-
             if (_uiState.value.isPlaying) {
                 // Is playing - just send pause
                 stopPlaybackEndCheck()
@@ -356,8 +362,14 @@ class MainViewModel(
 
             } else {
                 // Is paused or stopped - check currentTrackUri and play
-                // TODO: JAY_LOG - just start play for now
-                val playResult = playNextRandomTrack(accessToken, false)
+                val playResult = _uiState.value.currentTrackDetails?.trackUri?.let { trackUri ->
+                    resumeTrack(accessToken, trackUri)
+                    // Has trackUri - just resume
+                }?: run {
+                    // No trackUri - play new track
+                    playNextRandomTrack(accessToken, false)
+                }
+
                 println("Play success: ${playResult.isSuccess}")
 
                 if (!playResult.isSuccess) {
@@ -370,6 +382,29 @@ class MainViewModel(
                     _uiState.update {
                         it.copy(isPlaying = !_uiState.value.isPlaying)
                     }
+                }
+            }
+        }
+    }
+
+    // Next - just play next random track
+    fun nextBtnOnClick() {
+        viewModelScope.launch {
+            val accessToken = getWorkingAccessToken()
+
+            val playResult = playNextRandomTrack(accessToken, false)
+
+            println("Play next success: ${playResult.isSuccess}")
+
+            if (!playResult.isSuccess) {
+                val rawMessage = playResult.data?.error?.message ?: ""
+                showSnackbar(
+                    getString(Res.string.play_failed, rawMessage)
+                )
+            } else {
+                // Update UI only if play was successful
+                _uiState.update {
+                    it.copy(isPlaying = true)
                 }
             }
         }
@@ -422,6 +457,21 @@ class MainViewModel(
             _uiState.update { it.copy(currentTrackDetails = nextTrackDetails) }
 
             // THEN schedule playback end for this track, coz this will kill off the current coroutine job
+            schedulePlaybackEndCheck(trackUri)
+        }
+
+        return playResult
+    }
+
+    // Resume track playback
+    private suspend fun resumeTrack(
+        accessToken: String, trackUri: String
+    ): Resource<SpotifyErrorResponse> {
+        val playResult = trackApiRepository.resumePlayback(accessToken)
+        println("resumeTrack: playResult = ${playResult.isSuccess}")
+
+        if (playResult.isSuccess) {
+            // Schedule playback end for this track, coz this will kill off the current coroutine job
             schedulePlaybackEndCheck(trackUri)
         }
 
@@ -547,62 +597,9 @@ class MainViewModel(
     }
 
     /**
-     * Playback state poll observer
+     * Tracks List
      **/
-    private var playbackObserverJob: Job? = null
 
-    // TODO: JAY_LOG - polling method, remove if unnecessary
-//    private fun startPlaybackObserver(currentTrackUri: String) {
-//        println("Starting playback observer for $currentTrackUri...")
-//
-//        playbackObserverJob?.cancel() // Reset if one is running
-//        playbackObserverJob = viewModelScope.launch {
-//            while (isActive) {
-//                val accessToken = getWorkingAccessToken()
-//                if (accessToken.isBlank()) break
-//
-//                val state = trackApiRepository.getPlayerState(accessToken)
-//                println("Player state: $state")
-//
-//                if (state != null) {
-//                    // 2. Check if the track is finished
-//                    // We assume it's finished if there's less than 2 seconds left
-//                    val duration = state.item?.durationMs ?: 0
-//                    val remaining = duration - state.progressMs
-//
-//                    println("Remaining time: $remaining ms")
-//
-//                    if (remaining < 2000 && state.isPlaying) {
-//                        delay(3000)
-//
-//                        // Increment play count of current track
-//                        trackDbRepository.incrementPlayCount(currentTrackUri)
-//
-//                        val currentTrackLabel = with(_uiState.value.currentTrackDetails) {
-//                            if (this != null) {
-//                                "$trackName - $artistName"
-//                            } else {
-//                                getString(Res.string.unknown_track)
-//                            }
-//                        }
-//                        println("Track finished - incrementing play count for $currentTrackLabel ($currentTrackUri)")
-//
-//                        playNextRandomTrack(accessToken)
-//
-//                        // Cancel off this job after playing next track
-//                        playbackObserverJob?.cancel()
-//                    }
-//                }
-//
-//                // Poll every 2 seconds for a balance between responsiveness and battery life
-//                delay(2000)
-//            }
-//        }
-//    }
-//
-//    private fun stopPlaybackObserver() {
-//        playbackObserverJob?.cancel()
-//    }
 
     // For launching spotify 1 time
     private fun launchSpotifyDesktop() {

@@ -86,25 +86,24 @@ class TrackApiRepository(private val client: HttpClient) {
         }
     }
 
-    suspend fun resumePlayback(accessToken: String): Boolean {
+    suspend fun resumePlayback(accessToken: String): Resource<SpotifyErrorResponse> {
         return try {
             // Same URL as Play, but with NO body
             val response: HttpResponse = client.put("https://api.spotify.com/v1/me/player/play") {
                 header("Authorization", "Bearer $accessToken")
-                // No setBody() call here!
             }
 
-            if (response.status == HttpStatusCode.NoContent) {
+            if (response.status == HttpStatusCode.NoContent || response.status == HttpStatusCode.OK) {
                 println("Playback resumed.")
-                true
+                Resource.Success()
             } else {
-                val errorBody = response.bodyAsText()
+                val errorBody = response.body<SpotifyErrorResponse>()
                 println("Failed to resume. Status: ${response.status}. Body: $errorBody")
-                false
+                Resource.Error(errorBody)
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            false
+            Resource.Error(message = e.message)
         }
     }
 

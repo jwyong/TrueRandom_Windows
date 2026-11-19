@@ -21,4 +21,6 @@ class TrackDbRepository(private val trackDao: TrackDao) {
         // 2. Pick a random URI safely
         return leastPlayedUris.randomOrNull()
     }
+
+    fun getPagedLikedTracks() = trackDao.getPagedLikedTracks()
 }
